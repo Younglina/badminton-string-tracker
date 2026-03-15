@@ -1,0 +1,867 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>羽线追踪 | Badminton String Tracker</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700;900&family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --neon-green: #39ff14;
+            --electric-blue: #00d4ff;
+            --deep-navy: #0a0e1a;
+            --midnight: #050810;
+            --accent-orange: #ff6b35;
+            --glass-bg: rgba(10, 14, 26, 0.85);
+            --glass-border: rgba(57, 255, 20, 0.2);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Noto Sans SC', sans-serif;
+            background: var(--midnight);
+            min-height: 100vh;
+            color: #fff;
+            overflow-x: hidden;
+        }
+
+        /* 动态背景 */
+        .bg-animation {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+            background: 
+                radial-gradient(ellipse at 20% 80%, rgba(57, 255, 20, 0.08) 0%, transparent 50%),
+                radial-gradient(ellipse at 80% 20%, rgba(0, 212, 255, 0.08) 0%, transparent 50%),
+                radial-gradient(ellipse at 50% 50%, rgba(255, 107, 53, 0.03) 0%, transparent 70%);
+        }
+
+        .bg-animation::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-image: 
+                linear-gradient(rgba(57, 255, 20, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(57, 255, 20, 0.03) 1px, transparent 1px);
+            background-size: 50px 50px;
+            animation: gridMove 20s linear infinite;
+        }
+
+        @keyframes gridMove {
+            0% { transform: perspective(500px) rotateX(60deg) translateY(0); }
+            100% { transform: perspective(500px) rotateX(60deg) translateY(50px); }
+        }
+
+        /* 头部 */
+        header {
+            padding: 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--glass-border);
+            background: var(--glass-bg);
+            backdrop-filter: blur(10px);
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .logo-icon {
+            width: 50px;
+            height: 50px;
+            background: linear-gradient(135deg, var(--neon-green), var(--electric-blue));
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.8rem;
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { box-shadow: 0 0 20px rgba(57, 255, 20, 0.3); }
+            50% { box-shadow: 0 0 40px rgba(57, 255, 20, 0.6); }
+        }
+
+        .logo-text {
+            font-family: 'Orbitron', sans-serif;
+            font-weight: 900;
+            font-size: 1.5rem;
+            background: linear-gradient(90deg, var(--neon-green), var(--electric-blue));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .logo-subtitle {
+            font-size: 0.75rem;
+            color: rgba(255,255,255,0.5);
+            letter-spacing: 2px;
+        }
+
+        .sync-status {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1rem;
+            background: rgba(57, 255, 20, 0.1);
+            border: 1px solid var(--glass-border);
+            border-radius: 20px;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .sync-status:hover {
+            background: rgba(57, 255, 20, 0.2);
+        }
+
+        .sync-status.syncing {
+            animation: blink 1s infinite;
+        }
+
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .sync-dot {
+            width: 8px;
+            height: 8px;
+            background: var(--neon-green);
+            border-radius: 50%;
+            box-shadow: 0 0 10px var(--neon-green);
+        }
+
+        .sync-dot.offline {
+            background: #ff4444;
+            box-shadow: 0 0 10px #ff4444;
+        }
+
+        /* 主内容区 */
+        main {
+            padding: 2rem;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        /* 统计卡片 */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .stat-card {
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            border-radius: 16px;
+            padding: 1.5rem;
+            position: relative;
+            overflow: hidden;
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 40px rgba(57, 255, 20, 0.1);
+        }
+
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, var(--neon-green), var(--electric-blue));
+        }
+
+        .stat-label {
+            font-size: 0.85rem;
+            color: rgba(255,255,255,0.5);
+            margin-bottom: 0.5rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .stat-value {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 2.5rem;
+            font-weight: 900;
+            color: var(--neon-green);
+        }
+
+        .stat-unit {
+            font-size: 0.9rem;
+            color: rgba(255,255,255,0.5);
+            margin-left: 0.3rem;
+        }
+
+        /* 操作按钮 */
+        .action-bar {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 2rem;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            padding: 0.875rem 1.5rem;
+            border: none;
+            border-radius: 12px;
+            font-family: 'Noto Sans SC', sans-serif;
+            font-weight: 700;
+            font-size: 0.95rem;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--neon-green), var(--electric-blue));
+            color: var(--deep-navy);
+        }
+
+        .btn-primary:hover {
+            transform: scale(1.05);
+            box-shadow: 0 5px 30px rgba(57, 255, 20, 0.4);
+        }
+
+        .btn-secondary {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid var(--glass-border);
+            color: #fff;
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255,255,255,0.1);
+        }
+
+        /* 内容区 */
+        .content-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+        }
+
+        @media (max-width: 900px) {
+            .content-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .panel {
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            border-radius: 20px;
+            overflow: hidden;
+        }
+
+        .panel-header {
+            padding: 1.25rem 1.5rem;
+            border-bottom: 1px solid var(--glass-border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .panel-title {
+            font-size: 1.1rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .panel-body {
+            padding: 1.5rem;
+            max-height: 500px;
+            overflow-y: auto;
+        }
+
+        /* 球拍卡片 */
+        .racket-list {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .racket-card {
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 12px;
+            padding: 1.25rem;
+            cursor: pointer;
+            transition: all 0.3s;
+            position: relative;
+        }
+
+        .racket-card:hover {
+            background: rgba(255,255,255,0.06);
+            border-color: var(--neon-green);
+        }
+
+        .racket-card.active {
+            border-color: var(--neon-green);
+            background: rgba(57, 255, 20, 0.05);
+        }
+
+        .racket-card.broken {
+            opacity: 0.6;
+        }
+
+        .racket-card.broken::after {
+            content: '已断线';
+            position: absolute;
+            top: 1rem;
+            right: 1rem;
+            background: var(--accent-orange);
+            color: #fff;
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 700;
+        }
+
+        .racket-name {
+            font-weight: 700;
+            font-size: 1.1rem;
+            margin-bottom: 0.25rem;
+        }
+
+        .racket-string {
+            color: var(--electric-blue);
+            font-size: 0.9rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .racket-stats {
+            display: flex;
+            gap: 1.5rem;
+            font-size: 0.85rem;
+            color: rgba(255,255,255,0.6);
+        }
+
+        .racket-stat {
+            display: flex;
+            align-items: center;
+            gap: 0.3rem;
+        }
+
+        .racket-stat strong {
+            color: var(--neon-green);
+            font-family: 'Orbitron', sans-serif;
+        }
+
+        /* 进度条 */
+        .progress-bar {
+            height: 6px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 3px;
+            margin-top: 0.75rem;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--neon-green), var(--electric-blue));
+            border-radius: 3px;
+            transition: width 0.5s ease;
+        }
+
+        .progress-fill.warning {
+            background: linear-gradient(90deg, var(--accent-orange), #ff4444);
+        }
+
+        /* 记录列表 */
+        .record-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        .record-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem;
+            background: rgba(255,255,255,0.03);
+            border-radius: 10px;
+            border-left: 3px solid var(--neon-green);
+        }
+
+        .record-item:last-child {
+            border-left-color: var(--accent-orange);
+        }
+
+        .record-info {
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+        }
+
+        .record-date {
+            font-weight: 500;
+        }
+
+        .record-note {
+            font-size: 0.85rem;
+            color: rgba(255,255,255,0.5);
+        }
+
+        .record-count {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--neon-green);
+        }
+
+        /* 空状态 */
+        .empty-state {
+            text-align: center;
+            padding: 3rem;
+            color: rgba(255,255,255,0.4);
+        }
+
+        .empty-state-icon {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            opacity: 0.5;
+        }
+
+        /* 模态框 */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.8);
+            backdrop-filter: blur(5px);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+            padding: 1rem;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: var(--deep-navy);
+            border: 1px solid var(--glass-border);
+            border-radius: 20px;
+            width: 100%;
+            max-width: 500px;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+
+        .modal-header {
+            padding: 1.5rem;
+            border-bottom: 1px solid var(--glass-border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .modal-title {
+            font-size: 1.25rem;
+            font-weight: 700;
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            color: rgba(255,255,255,0.5);
+            font-size: 1.5rem;
+            cursor: pointer;
+            transition: color 0.3s;
+        }
+
+        .modal-close:hover {
+            color: #fff;
+        }
+
+        .modal-body {
+            padding: 1.5rem;
+        }
+
+        .form-group {
+            margin-bottom: 1.25rem;
+        }
+
+        .form-label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-size: 0.9rem;
+            color: rgba(255,255,255,0.7);
+        }
+
+        .form-input, .form-select {
+            width: 100%;
+            padding: 0.875rem 1rem;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 10px;
+            color: #fff;
+            font-family: 'Noto Sans SC', sans-serif;
+            font-size: 0.95rem;
+            transition: border-color 0.3s;
+        }
+
+        .form-input:focus, .form-select:focus {
+            outline: none;
+            border-color: var(--neon-green);
+        }
+
+        .form-input::placeholder {
+            color: rgba(255,255,255,0.3);
+        }
+
+        .form-hint {
+            font-size: 0.8rem;
+            color: rgba(255,255,255,0.4);
+            margin-top: 0.5rem;
+        }
+
+        .form-actions {
+            display: flex;
+            gap: 1rem;
+            margin-top: 1.5rem;
+        }
+
+        .btn-full {
+            flex: 1;
+            justify-content: center;
+        }
+
+        /* 设置面板 */
+        .settings-section {
+            margin-bottom: 1.5rem;
+        }
+
+        .settings-title {
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: rgba(255,255,255,0.5);
+            margin-bottom: 0.75rem;
+        }
+
+        .token-input {
+            font-family: monospace;
+            font-size: 0.85rem;
+        }
+
+        /* 响应式 */
+        @media (max-width: 600px) {
+            header {
+                flex-direction: column;
+                gap: 1rem;
+                text-align: center;
+            }
+
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            .stat-value {
+                font-size: 1.75rem;
+            }
+
+            main {
+                padding: 1rem;
+            }
+        }
+
+        /* 滚动条 */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: rgba(255,255,255,0.05);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: rgba(57, 255, 20, 0.3);
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(57, 255, 20, 0.5);
+        }
+
+        /* 动画 */
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .animate-in {
+            animation: slideIn 0.5s ease forwards;
+        }
+
+        /* 删除按钮 */
+        .btn-danger {
+            background: rgba(255, 68, 68, 0.2);
+            border: 1px solid rgba(255, 68, 68, 0.3);
+            color: #ff4444;
+        }
+
+        .btn-danger:hover {
+            background: rgba(255, 68, 68, 0.3);
+        }
+
+        .racket-actions {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 0.75rem;
+        }
+
+        .btn-small {
+            padding: 0.4rem 0.75rem;
+            font-size: 0.8rem;
+            border-radius: 6px;
+        }
+
+        /* 断线标记按钮 */
+        .btn-break {
+            background: rgba(255, 107, 53, 0.2);
+            border: 1px solid rgba(255, 107, 53, 0.3);
+            color: var(--accent-orange);
+        }
+
+        .btn-break:hover {
+            background: rgba(255, 107, 53, 0.3);
+        }
+
+        .btn-break:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+    </style>
+</head>
+<body>
+    <div class="bg-animation"></div>
+    
+    <header>
+        <div class="logo">
+            <div class="logo-icon">🏸</div>
+            <div>
+                <div class="logo-text">羽线追踪</div>
+                <div class="logo-subtitle">STRING TRACKER</div>
+            </div>
+        </div>
+        <div class="sync-status" id="syncStatus" onclick="openSettings()">
+            <div class="sync-dot" id="syncDot"></div>
+            <span id="syncText">本地模式</span>
+        </div>
+    </header>
+
+    <main>
+        <!-- 统计卡片 -->
+        <div class="stats-grid">
+            <div class="stat-card animate-in" style="animation-delay: 0.1s">
+                <div class="stat-label">球拍总数</div>
+                <div class="stat-value" id="totalRackets">0<span class="stat-unit">支</span></div>
+            </div>
+            <div class="stat-card animate-in" style="animation-delay: 0.2s">
+                <div class="stat-label">累计场次</div>
+                <div class="stat-value" id="totalSessions">0<span class="stat-unit">场</span></div>
+            </div>
+            <div class="stat-card animate-in" style="animation-delay: 0.3s">
+                <div class="stat-label">断线记录</div>
+                <div class="stat-value" id="brokenCount">0<span class="stat-unit">次</span></div>
+            </div>
+            <div class="stat-card animate-in" style="animation-delay: 0.4s">
+                <div class="stat-label">平均寿命</div>
+                <div class="stat-value" id="avgLife">0<span class="stat-unit">场</span></div>
+            </div>
+        </div>
+
+        <!-- 操作按钮 -->
+        <div class="action-bar">
+            <button class="btn btn-primary" onclick="openAddRacketModal()">
+                <span>+</span> 添加球拍
+            </button>
+            <button class="btn btn-secondary" onclick="openSettings()">
+                <span>⚙️</span> 同步设置
+            </button>
+        </div>
+
+        <!-- 内容区 -->
+        <div class="content-grid">
+            <!-- 球拍列表 -->
+            <div class="panel animate-in" style="animation-delay: 0.5s">
+                <div class="panel-header">
+                    <div class="panel-title">
+                        <span>🏸</span> 我的球拍
+                    </div>
+                </div>
+                <div class="panel-body">
+                    <div class="racket-list" id="racketList">
+                        <div class="empty-state">
+                            <div class="empty-state-icon">🏸</div>
+                            <p>还没有添加球拍</p>
+                            <p style="font-size: 0.85rem; margin-top: 0.5rem;">点击"添加球拍"开始记录</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 使用记录 -->
+            <div class="panel animate-in" style="animation-delay: 0.6s">
+                <div class="panel-header">
+                    <div class="panel-title">
+                        <span>📊</span> 使用记录
+                    </div>
+                    <span id="selectedRacketName" style="color: rgba(255,255,255,0.5); font-size: 0.9rem;"></span>
+                </div>
+                <div class="panel-body">
+                    <div class="record-list" id="recordList">
+                        <div class="empty-state">
+                            <div class="empty-state-icon">📋</div>
+                            <p>选择球拍查看记录</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- 添加球拍模态框 -->
+    <div class="modal" id="addRacketModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="modal-title">添加新球拍</div>
+                <button class="modal-close" onclick="closeModal('addRacketModal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="addRacketForm">
+                    <div class="form-group">
+                        <label class="form-label">球拍型号</label>
+                        <input type="text" class="form-input" id="racketModel" placeholder="例如：YONEX 天斧100ZZ" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">球线型号</label>
+                        <input type="text" class="form-input" id="stringModel" placeholder="例如：BG80 26磅" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">初始日期</label>
+                        <input type="date" class="form-input" id="startDate" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">备注（可选）</label>
+                        <input type="text" class="form-input" id="racketNote" placeholder="例如：主力拍、备用拍">
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" class="btn btn-secondary btn-full" onclick="closeModal('addRacketModal')">取消</button>
+                        <button type="submit" class="btn btn-primary btn-full">添加</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- 添加记录模态框 -->
+    <div class="modal" id="addRecordModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="modal-title">记录使用</div>
+                <button class="modal-close" onclick="closeModal('addRecordModal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="addRecordForm">
+                    <div class="form-group">
+                        <label class="form-label">日期</label>
+                        <input type="date" class="form-input" id="recordDate" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">场次数量</label>
+                        <input type="number" class="form-input" id="sessionCount" min="1" value="1" required>
+                        <div class="form-hint">本次打球打了多少场</div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">备注（可选）</label>
+                        <input type="text" class="form-input" id="recordNote" placeholder="例如：单打、双打、比赛">
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" class="btn btn-secondary btn-full" onclick="closeModal('addRecordModal')">取消</button>
+                        <button type="submit" class="btn btn-primary btn-full">记录</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- 设置模态框 -->
+    <div class="modal" id="settingsModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="modal-title">同步设置</div>
+                <button class="modal-close" onclick="closeModal('settingsModal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="settings-section">
+                    <div class="settings-title">关于同步</div>
+                    <p style="font-size: 0.9rem; color: rgba(255,255,255,0.7); line-height: 1.6;">
+                        使用 GitHub Gist 实现免费云端同步。配置后，你的数据会自动同步到云端，在任何设备上都能访问。
+                    </p>
+                </div>
+                <div class="settings-section">
+                    <div class="settings-title">GitHub Token</div>
+                    <input type="password" class="form-input token-input" id="githubToken" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx">
+                    <div class="form-hint">
+                        在 GitHub Settings → Developer settings → Personal access tokens → Tokens (classic) 中创建<br>
+                        需要勾选 <strong>gist</strong> 权限
+                    </div>
+                </div>
+                <div class="settings-section">
+                    <div class="settings-title">Gist ID（可选）</div>
+                    <input type="text" class="form-input token-input" id="gistId" placeholder="留空则自动创建">
+                    <div class="form-hint">如果已有 Gist，输入 ID 以同步现有数据</div>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary btn-full" onclick="closeModal('settingsModal')">取消</button>
+                    <button type="button" class="btn btn-primary btn-full" onclick="saveSettings()">保存并连接</button>
+                </div>
+                <div class="settings-section" style="margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid var(--glass-border);">
+                    <button type="button" class="btn btn-danger btn-full" onclick="exportData()">📥 导出数据备份</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
