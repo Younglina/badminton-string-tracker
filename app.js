@@ -492,8 +492,9 @@ async function createGist() {
     const response = await fetch('https://api.github.com/gists', {
         method: 'POST',
         headers: {
-            'Authorization': `token ${settings.githubToken}`,
-            'Content-Type': 'application/json'
+            'Authorization': `Bearer ${settings.githubToken}`,
+            'Content-Type': 'application/json',
+            'Accept': 'application/vnd.github.v3+json'
         },
         body: JSON.stringify({
             description: '羽线追踪 - 羽毛球球线消耗记录',
@@ -520,8 +521,9 @@ async function updateGist() {
     const response = await fetch(`https://api.github.com/gists/${settings.gistId}`, {
         method: 'PATCH',
         headers: {
-            'Authorization': `token ${settings.githubToken}`,
-            'Content-Type': 'application/json'
+            'Authorization': `Bearer ${settings.githubToken}`,
+            'Content-Type': 'application/json',
+            'Accept': 'application/vnd.github.v3+json'
         },
         body: JSON.stringify({
             files: {
@@ -549,7 +551,8 @@ async function loadFromGist() {
     try {
         const response = await fetch(`https://api.github.com/gists/${settings.gistId}`, {
             headers: {
-                'Authorization': `token ${settings.githubToken}`
+                'Authorization': `Bearer ${settings.githubToken}`,
+                'Accept': 'application/vnd.github.v3+json'
             }
         });
 
