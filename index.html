@@ -683,8 +683,7 @@
             </div>
         </div>
         <div class="sync-status" id="syncStatus" onclick="openSettings()">
-            <div class="sync-dot" id="syncDot"></div>
-            <span id="syncText">本地模式</span>
+            <span>⚙️ 数据管理</span>
         </div>
     </header>
 
@@ -715,7 +714,7 @@
                 <span>+</span> 添加球拍
             </button>
             <button class="btn btn-secondary" onclick="openSettings()">
-                <span>⚙️</span> 同步设置
+                <span>💾</span> 数据管理
             </button>
         </div>
 
@@ -824,39 +823,45 @@
         </div>
     </div>
 
-    <!-- 设置模态框 -->
+    <!-- 数据管理模态框 -->
     <div class="modal" id="settingsModal">
         <div class="modal-content">
             <div class="modal-header">
-                <div class="modal-title">同步设置</div>
+                <div class="modal-title">数据管理</div>
                 <button class="modal-close" onclick="closeModal('settingsModal')">&times;</button>
             </div>
             <div class="modal-body">
                 <div class="settings-section">
-                    <div class="settings-title">关于同步</div>
-                    <p style="font-size: 0.9rem; color: rgba(255,255,255,0.7); line-height: 1.6;">
-                        使用 GitHub Gist 实现免费云端同步。配置后，你的数据会自动同步到云端，在任何设备上都能访问。
+                    <div class="settings-title">导出数据</div>
+                    <p style="font-size: 0.9rem; color: rgba(255,255,255,0.7); line-height: 1.6; margin-bottom: 1rem;">
+                        将数据导出为 JSON 格式，可以复制文本或下载文件。
                     </p>
-                </div>
-                <div class="settings-section">
-                    <div class="settings-title">GitHub Token</div>
-                    <input type="password" class="form-input token-input" id="githubToken" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx">
-                    <div class="form-hint">
-                        在 GitHub Settings → Developer settings → Personal access tokens → Tokens (classic) 中创建<br>
-                        需要勾选 <strong>gist</strong> 权限
+                    <div class="form-actions">
+                        <button type="button" class="btn btn-primary btn-full" onclick="exportDataToClipboard()">📋 复制 JSON</button>
+                        <button type="button" class="btn btn-secondary btn-full" onclick="exportDataToFile()">💾 下载文件</button>
                     </div>
                 </div>
-                <div class="settings-section">
-                    <div class="settings-title">Gist ID（可选）</div>
-                    <input type="text" class="form-input token-input" id="gistId" placeholder="留空则自动创建">
-                    <div class="form-hint">如果已有 Gist，输入 ID 以同步现有数据</div>
-                </div>
-                <div class="form-actions">
-                    <button type="button" class="btn btn-secondary btn-full" onclick="closeModal('settingsModal')">取消</button>
-                    <button type="button" class="btn btn-primary btn-full" onclick="saveSettings()">保存并连接</button>
-                </div>
+                
                 <div class="settings-section" style="margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid var(--glass-border);">
-                    <button type="button" class="btn btn-danger btn-full" onclick="exportData()">📥 导出数据备份</button>
+                    <div class="settings-title">导入数据</div>
+                    <p style="font-size: 0.9rem; color: rgba(255,255,255,0.7); line-height: 1.6; margin-bottom: 1rem;">
+                        粘贴 JSON 数据文本，或上传备份文件恢复数据。
+                    </p>
+                    <textarea class="form-input" id="importDataText" rows="6" placeholder='粘贴 JSON 数据，例如：
+{
+  "rackets": [...],
+  "lastSync": "..."
+}' style="font-family: monospace; font-size: 0.8rem; margin-bottom: 0.75rem;"></textarea>
+                    <div class="form-actions">
+                        <button type="button" class="btn btn-primary btn-full" onclick="importDataFromText()">📋 粘贴导入</button>
+                        <button type="button" class="btn btn-secondary btn-full" onclick="document.getElementById('importFileInput').click()">📁 上传文件</button>
+                    </div>
+                    <input type="file" id="importFileInput" accept=".json" style="display: none;" onchange="importDataFromFile(this)">
+                </div>
+                
+                <div class="settings-section" style="margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid var(--glass-border);">
+                    <div class="settings-title">危险区域</div>
+                    <button type="button" class="btn btn-danger btn-full" onclick="clearAllData()">🗑️ 清空所有数据</button>
                 </div>
             </div>
         </div>

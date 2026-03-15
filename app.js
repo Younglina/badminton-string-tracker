@@ -27,11 +27,6 @@ document.addEventListener('DOMContentLoaded', () => {
     loadSettings();
     updateUI();
     setupEventListeners();
-    
-    // 如果有 token，尝试同步
-    if (settings.githubToken) {
-        syncData();
-    }
 });
 
 function setupEventListeners() {
@@ -394,16 +389,7 @@ function updateRecordList() {
 }
 
 function updateSyncStatus() {
-    const dot = document.getElementById('syncDot');
-    const text = document.getElementById('syncText');
-    
-    if (settings.githubToken && settings.gistId) {
-        dot.classList.remove('offline');
-        text.textContent = '已同步';
-    } else {
-        dot.classList.add('offline');
-        text.textContent = '本地模式';
-    }
+    // 本地模式，无需显示同步状态
 }
 
 // ==================== 模态框 ====================
@@ -418,8 +404,6 @@ function openAddRecordModal(event) {
 }
 
 function openSettings() {
-    document.getElementById('githubToken').value = settings.githubToken || '';
-    document.getElementById('gistId').value = settings.gistId || '';
     document.getElementById('settingsModal').classList.add('active');
 }
 
@@ -434,159 +418,32 @@ window.onclick = function(event) {
     }
 };
 
-// ==================== GitHub Gist 同步 ====================
+// ==================== 数据导入导出 ====================
 
-async function saveSettings() {
-    const token = document.getElementById('githubToken').value.trim();
-    const gistId = document.getElementById('gistId').value.trim();
+// 导出数据到剪贴板
+async function exportDataToClipboard() {
+    const dataStr = JSON.stringify(appData, null, 2);
     
-    if (!token) {
-        alert('请输入 GitHub Token');
-        return;
-    }
-
-    settings.githubToken = token;
-    settings.gistId = gistId;
-    saveSettingsLocal();
-    
-    closeModal('settingsModal');
-    
-    // 尝试同步
-    await syncData();
-}
-
-async function syncData() {
-    if (!settings.githubToken) return;
-
-    const syncStatus = document.getElementById('syncStatus');
-    const syncText = document.getElementById('syncText');
-    
-    syncStatus.classList.add('syncing');
-    syncText.textContent = '同步中...';
-
     try {
-        if (settings.gistId) {
-            // 更新现有 Gist
-            await updateGist();
-        } else {
-            // 创建新 Gist
-            await createGist();
-        }
-        
-        appData.lastSync = new Date().toISOString();
-        saveData();
-        
-        syncText.textContent = '已同步';
-        document.getElementById('syncDot').classList.remove('offline');
-    } catch (error) {
-        console.error('Sync error:', error);
-        syncText.textContent = '同步失败';
-        document.getElementById('syncDot').classList.add('offline');
-        alert('同步失败：' + error.message);
-    } finally {
-        syncStatus.classList.remove('syncing');
+        await navigator.clipboard.writeText(dataStr);
+        alert('数据已复制到剪贴板！\n\n你可以：\n1. 粘贴到微信/QQ 发送给自己\n2. 粘贴到备忘录保存\n3. 粘贴到其他设备导入');
+    } catch (err) {
+        console.error('复制失败:', err);
+        // 降级方案：显示文本框让用户手动复制
+        const textArea = document.createElement('textarea');
+        textArea.value = dataStr;
+        textArea.style.position = 'fixed';
+        textArea.style.left = '-9999px';
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+        alert('数据已复制到剪贴板！');
     }
 }
 
-async function createGist() {
-    const response = await fetch('https://api.github.com/gists', {
-        method: 'POST',
-        headers: {
-            'Authorization': `Bearer ${settings.githubToken}`,
-            'Content-Type': 'application/json',
-            'Accept': 'application/vnd.github.v3+json'
-        },
-        body: JSON.stringify({
-            description: '羽线追踪 - 羽毛球球线消耗记录',
-            public: false,
-            files: {
-                'badminton-string-tracker.json': {
-                    content: JSON.stringify(appData, null, 2)
-                }
-            }
-        })
-    });
-
-    if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || '创建 Gist 失败');
-    }
-
-    const data = await response.json();
-    settings.gistId = data.id;
-    saveSettingsLocal();
-}
-
-async function updateGist() {
-    const response = await fetch(`https://api.github.com/gists/${settings.gistId}`, {
-        method: 'PATCH',
-        headers: {
-            'Authorization': `Bearer ${settings.githubToken}`,
-            'Content-Type': 'application/json',
-            'Accept': 'application/vnd.github.v3+json'
-        },
-        body: JSON.stringify({
-            files: {
-                'badminton-string-tracker.json': {
-                    content: JSON.stringify(appData, null, 2)
-                }
-            }
-        })
-    });
-
-    if (!response.ok) {
-        if (response.status === 404) {
-            // Gist 不存在，创建新的
-            settings.gistId = '';
-            return createGist();
-        }
-        const error = await response.json();
-        throw new Error(error.message || '更新 Gist 失败');
-    }
-}
-
-async function loadFromGist() {
-    if (!settings.githubToken || !settings.gistId) return;
-
-    try {
-        const response = await fetch(`https://api.github.com/gists/${settings.gistId}`, {
-            headers: {
-                'Authorization': `Bearer ${settings.githubToken}`,
-                'Accept': 'application/vnd.github.v3+json'
-            }
-        });
-
-        if (!response.ok) {
-            throw new Error('获取 Gist 失败');
-        }
-
-        const data = await response.json();
-        const file = data.files['badminton-string-tracker.json'];
-        
-        if (file && file.content) {
-            const remoteData = JSON.parse(file.content);
-            
-            // 合并数据（简单的本地优先策略）
-            if (remoteData.rackets) {
-                // 如果远程数据更新，使用远程数据
-                const remoteTime = new Date(remoteData.lastSync || 0);
-                const localTime = new Date(appData.lastSync || 0);
-                
-                if (remoteTime > localTime) {
-                    appData = remoteData;
-                    saveData();
-                    updateUI();
-                }
-            }
-        }
-    } catch (error) {
-        console.error('Load from gist error:', error);
-    }
-}
-
-// ==================== 数据导出 ====================
-
-function exportData() {
+// 导出数据到文件
+function exportDataToFile() {
     const dataStr = JSON.stringify(appData, null, 2);
     const blob = new Blob([dataStr], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -598,6 +455,86 @@ function exportData() {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+}
+
+// 从文本导入数据
+function importDataFromText() {
+    const text = document.getElementById('importDataText').value.trim();
+    
+    if (!text) {
+        alert('请先粘贴 JSON 数据');
+        return;
+    }
+    
+    try {
+        const importedData = JSON.parse(text);
+        
+        if (!importedData.rackets || !Array.isArray(importedData.rackets)) {
+            throw new Error('数据格式不正确：缺少 rackets 数组');
+        }
+        
+        // 确认导入
+        const racketCount = importedData.rackets.length;
+        if (confirm(`确定要导入数据吗？\n\n包含 ${racketCount} 个球拍记录\n当前数据将被替换。`)) {
+            appData = importedData;
+            appData.lastSync = new Date().toISOString();
+            saveData();
+            updateUI();
+            document.getElementById('importDataText').value = '';
+            closeModal('settingsModal');
+            alert('数据导入成功！');
+        }
+    } catch (error) {
+        alert('导入失败：' + error.message);
+    }
+}
+
+// 从文件导入数据
+function importDataFromFile(input) {
+    const file = input.files[0];
+    if (!file) return;
+    
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        try {
+            const importedData = JSON.parse(e.target.result);
+            
+            if (!importedData.rackets || !Array.isArray(importedData.rackets)) {
+                throw new Error('数据格式不正确：缺少 rackets 数组');
+            }
+            
+            const racketCount = importedData.rackets.length;
+            if (confirm(`确定要导入文件吗？\n\n文件名：${file.name}\n包含 ${racketCount} 个球拍记录\n当前数据将被替换。`)) {
+                appData = importedData;
+                appData.lastSync = new Date().toISOString();
+                saveData();
+                updateUI();
+                closeModal('settingsModal');
+                alert('数据导入成功！');
+            }
+        } catch (error) {
+            alert('导入失败：' + error.message);
+        }
+        input.value = ''; // 重置 input
+    };
+    reader.readAsText(file);
+}
+
+// 清空所有数据
+function clearAllData() {
+    if (confirm('⚠️ 警告\n\n确定要清空所有数据吗？\n此操作不可恢复！\n\n建议先导出备份。')) {
+        if (confirm('再次确认：真的要删除所有数据吗？')) {
+            appData = {
+                rackets: [],
+                lastSync: null
+            };
+            currentRacketId = null;
+            saveData();
+            updateUI();
+            closeModal('settingsModal');
+            alert('所有数据已清空');
+        }
+    }
 }
 
 // ==================== 工具函数 ====================
