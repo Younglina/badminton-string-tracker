@@ -951,6 +951,12 @@
                             </div>
                             <div class="form-hint">只需 gist 权限。<a href="https://github.com/settings/tokens/new?scopes=gist" target="_blank" style="color: var(--electric-blue);">点击创建 Token</a></div>
                         </div>
+                        <div class="form-group">
+                            <label class="form-label">Gist ID（可选）</label>
+                            <input type="text" class="form-input" id="gistIdInput"
+                                placeholder="留空自动创建新 Gist，已有则填入 Gist ID">
+                            <div class="form-hint">多设备同步时，在其他设备填入相同的 Gist ID</div>
+                        </div>
                         <div class="form-actions">
                             <button type="button" class="btn btn-sync btn-full" onclick="connectGist()">连接</button>
                         </div>

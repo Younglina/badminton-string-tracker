@@ -166,7 +166,10 @@ function handleGistError(status) {
 // 连接 Gist
 async function connectGist() {
     const tokenInput = document.getElementById('gistTokenInput');
+    const gistIdInput = document.getElementById('gistIdInput');
     const token = tokenInput.value.trim();
+    const existingGistId = gistIdInput.value.trim();
+
     if (!token) {
         showToast('请输入 GitHub Token', 'error');
         return;
@@ -174,9 +177,23 @@ async function connectGist() {
 
     try {
         settings.githubToken = token;
-        await createGist();
-        updateSyncUI();
-        showToast('连接成功！Gist 已创建并上传数据', 'success');
+
+        if (existingGistId) {
+            // 连接已有 Gist：先验证 Gist 存在，然后下载数据
+            settings.gistId = existingGistId;
+            const remote = await readGist();
+            // 远程数据覆盖本地（首次连接以云端为准）
+            appData = remote.data;
+            saveData();
+            saveSettingsLocal();
+            updateSyncUI();
+            showToast('连接成功！已从云端同步数据', 'success');
+        } else {
+            // 创建新 Gist
+            await createGist();
+            updateSyncUI();
+            showToast('连接成功！Gist 已创建并上传数据', 'success');
+        }
     } catch (error) {
         settings.githubToken = '';
         settings.gistId = '';
@@ -245,7 +262,14 @@ function updateSyncUI() {
     if (settings.githubToken && settings.gistId) {
         disconnected.style.display = 'none';
         connected.style.display = 'block';
-        gistIdEl.textContent = settings.gistId.substring(0, 8) + '...';
+        gistIdEl.textContent = settings.gistId;
+        gistIdEl.title = '点击复制';
+        gistIdEl.style.cursor = 'pointer';
+        gistIdEl.onclick = function() {
+            navigator.clipboard.writeText(settings.gistId).then(() => {
+                showToast('Gist ID 已复制', 'success');
+            });
+        };
     } else {
         disconnected.style.display = 'block';
         connected.style.display = 'none';
