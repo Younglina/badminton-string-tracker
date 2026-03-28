@@ -72,6 +72,198 @@ function saveSettingsLocal() {
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
 }
 
+// ==================== Gist 同步 ====================
+
+const GIST_API = 'https://api.github.com/gists';
+const GIST_FILENAME = 'badminton-string-tracker.json';
+const GIST_DESCRIPTION = 'Badminton String Tracker Data';
+
+async function gistApi(method, path, body = null) {
+    const options = {
+        method,
+        headers: {
+            'Authorization': `Bearer ${settings.githubToken}`,
+            'Content-Type': 'application/json'
+        }
+    };
+    if (body) {
+        options.body = JSON.stringify(body);
+    }
+    const response = await fetch(`${GIST_API}${path}`, options);
+    return response;
+}
+
+async function createGist() {
+    const response = await gistApi('POST', '', {
+        description: GIST_DESCRIPTION,
+        public: false,
+        files: {
+            [GIST_FILENAME]: {
+                content: JSON.stringify(appData, null, 2)
+            }
+        }
+    });
+
+    if (!response.ok) {
+        throw handleGistError(response.status);
+    }
+
+    const gist = await response.json();
+    settings.gistId = gist.id;
+    saveSettingsLocal();
+    return gist;
+}
+
+async function readGist() {
+    const response = await gistApi('GET', `/${settings.gistId}`);
+
+    if (!response.ok) {
+        throw handleGistError(response.status);
+    }
+
+    const gist = await response.json();
+    const file = gist.files[GIST_FILENAME];
+    if (!file) {
+        throw new Error('Gist 中未找到数据文件');
+    }
+
+    return {
+        data: JSON.parse(file.content),
+        updatedAt: gist.updated_at
+    };
+}
+
+async function updateGist() {
+    const response = await gistApi('PATCH', `/${settings.gistId}`, {
+        description: GIST_DESCRIPTION,
+        files: {
+            [GIST_FILENAME]: {
+                content: JSON.stringify(appData, null, 2)
+            }
+        }
+    });
+
+    if (!response.ok) {
+        throw handleGistError(response.status);
+    }
+}
+
+function handleGistError(status) {
+    switch (status) {
+        case 401:
+            return new Error('Token 无效或已过期，请重新配置');
+        case 403:
+            return new Error('请求过于频繁，请稍后再试');
+        case 404:
+            settings.gistId = '';
+            saveSettingsLocal();
+            return new Error('远程 Gist 不存在，请重新连接');
+        default:
+            return new Error(`同步失败 (HTTP ${status})`);
+    }
+}
+
+// 连接 Gist
+async function connectGist() {
+    const tokenInput = document.getElementById('gistTokenInput');
+    const token = tokenInput.value.trim();
+    if (!token) {
+        showToast('请输入 GitHub Token', 'error');
+        return;
+    }
+
+    try {
+        settings.githubToken = token;
+        await createGist();
+        updateSyncUI();
+        showToast('连接成功！Gist 已创建并上传数据', 'success');
+    } catch (error) {
+        settings.githubToken = '';
+        settings.gistId = '';
+        saveSettingsLocal();
+        showToast(error.message, 'error');
+    }
+}
+
+// 断开连接
+function disconnectGist() {
+    settings.githubToken = '';
+    settings.gistId = '';
+    saveSettingsLocal();
+    updateSyncUI();
+    showToast('已断开云端连接', 'info');
+}
+
+// 手动同步
+async function syncWithGist() {
+    if (!settings.githubToken || !settings.gistId) {
+        showToast('请先连接 GitHub Gist', 'error');
+        return;
+    }
+
+    const syncBtn = document.getElementById('syncBtn');
+    const originalText = syncBtn.textContent;
+    syncBtn.disabled = true;
+    syncBtn.textContent = '同步中...';
+
+    try {
+        const remote = await readGist();
+        const localTime = appData.lastModified ? new Date(appData.lastModified).getTime() : 0;
+        const remoteTime = new Date(remote.updatedAt).getTime();
+        const diff = Math.abs(localTime - remoteTime);
+
+        if (diff < 2000) {
+            // 时间差 < 2秒，视为相同
+            showToast('数据已是最新', 'info');
+        } else if (localTime > remoteTime) {
+            // 本地较新，上传
+            await updateGist();
+            showToast('数据已上传到云端', 'success');
+        } else {
+            // 远程较新，下载
+            appData = remote.data;
+            saveData();
+            showToast('已从云端同步最新数据', 'success');
+        }
+    } catch (error) {
+        if (error instanceof TypeError && error.message.includes('fetch')) {
+            showToast('网络连接失败，请检查网络', 'error');
+        } else {
+            showToast(error.message, 'error');
+        }
+    } finally {
+        syncBtn.disabled = false;
+        syncBtn.textContent = originalText;
+    }
+}
+
+function updateSyncUI() {
+    const disconnected = document.getElementById('syncDisconnected');
+    const connected = document.getElementById('syncConnected');
+    const gistIdEl = document.getElementById('syncGistId');
+
+    if (settings.githubToken && settings.gistId) {
+        disconnected.style.display = 'none';
+        connected.style.display = 'block';
+        gistIdEl.textContent = settings.gistId.substring(0, 8) + '...';
+    } else {
+        disconnected.style.display = 'block';
+        connected.style.display = 'none';
+    }
+}
+
+function toggleTokenVisibility() {
+    const input = document.getElementById('gistTokenInput');
+    const btn = input.parentElement.querySelector('.token-toggle');
+    if (input.type === 'password') {
+        input.type = 'text';
+        btn.textContent = '隐藏';
+    } else {
+        input.type = 'password';
+        btn.textContent = '显示';
+    }
+}
+
 // ==================== 球拍管理 ====================
 
 function addRacket() {
@@ -379,6 +571,7 @@ function openAddRecordModal(event) {
 
 function openSettings() {
     document.getElementById('settingsModal').classList.add('active');
+    updateSyncUI();
 }
 
 function closeModal(modalId) {
