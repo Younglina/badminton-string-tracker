@@ -98,10 +98,10 @@ Authorization: Bearer {token}
 用户点击"同步数据"按钮
   1. 检查 Token 和 Gist ID 是否已配置
   2. GET /gists/{gist_id} — 读取远程数据
-  3. 比较：
+  3. 比较（注意：local.lastModified 是客户端时间，gist.updated_at 是 GitHub 服务器时间，存在时钟偏差）：
+     - |local.lastModified - gist.updated_at| < 2秒 → 视为相同，提示"数据已是最新"
      - local.lastModified > gist.updated_at → 本地较新，PATCH 上传覆盖
      - local.lastModified < gist.updated_at → 远程较新，用远程数据覆盖本地
-     - local.lastModified ≈ gist.updated_at → 提示"数据已是最新"
   4. 显示同步结果（成功/失败/无变更）
 ```
 
