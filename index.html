@@ -669,6 +669,50 @@
             opacity: 0.5;
             cursor: not-allowed;
         }
+
+        /* Toast 提示 */
+        .toast {
+            padding: 0.875rem 1.25rem;
+            border-radius: 10px;
+            font-size: 0.9rem;
+            font-weight: 500;
+            backdrop-filter: blur(10px);
+            animation: toastIn 0.3s ease forwards;
+            max-width: 320px;
+            word-break: break-word;
+        }
+
+        .toast.success {
+            background: rgba(57, 255, 20, 0.15);
+            border: 1px solid rgba(57, 255, 20, 0.4);
+            color: var(--neon-green);
+        }
+
+        .toast.error {
+            background: rgba(255, 68, 68, 0.15);
+            border: 1px solid rgba(255, 68, 68, 0.4);
+            color: #ff4444;
+        }
+
+        .toast.info {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: rgba(255, 255, 255, 0.7);
+        }
+
+        .toast.hide {
+            animation: toastOut 0.3s ease forwards;
+        }
+
+        @keyframes toastIn {
+            from { opacity: 0; transform: translateX(40px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+
+        @keyframes toastOut {
+            from { opacity: 1; transform: translateX(0); }
+            to { opacity: 0; transform: translateX(40px); }
+        }
     </style>
 </head>
 <body>
@@ -866,6 +910,9 @@
             </div>
         </div>
     </div>
+
+    <!-- Toast 提示 -->
+    <div id="toastContainer" style="position: fixed; top: 1.5rem; right: 1.5rem; z-index: 2000; display: flex; flex-direction: column; gap: 0.5rem;"></div>
 
     <script src="app.js"></script>
 </body>
