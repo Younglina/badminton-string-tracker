@@ -1,6 +1,5 @@
 /**
  * 羽线追踪 - 羽毛球球线消耗记录应用
- * 使用 GitHub Gist 实现免费云端同步
  */
 
 // ==================== 数据存储 ====================
@@ -97,11 +96,6 @@ function addRacket() {
     closeModal('addRacketModal');
     document.getElementById('addRacketForm').reset();
     document.getElementById('startDate').valueAsDate = new Date();
-    
-    // 自动同步
-    if (settings.githubToken) {
-        syncData();
-    }
 }
 
 function deleteRacket(id, event) {
@@ -112,10 +106,6 @@ function deleteRacket(id, event) {
             currentRacketId = null;
         }
         saveData();
-        
-        if (settings.githubToken) {
-            syncData();
-        }
     }
 }
 
@@ -132,10 +122,6 @@ function markAsBroken(id, event) {
         racket.breakDate = new Date().toISOString();
         racket.breakNote = note.trim();
         saveData();
-        
-        if (settings.githubToken) {
-            syncData();
-        }
     }
 }
 
@@ -177,10 +163,6 @@ function addRecord() {
     closeModal('addRecordModal');
     document.getElementById('addRecordForm').reset();
     document.getElementById('recordDate').valueAsDate = new Date();
-    
-    if (settings.githubToken) {
-        syncData();
-    }
 }
 
 function deleteRecord(racketId, recordId) {
@@ -189,10 +171,6 @@ function deleteRecord(racketId, recordId) {
         if (racket) {
             racket.records = racket.records.filter(r => r.id !== recordId);
             saveData();
-            
-            if (settings.githubToken) {
-                syncData();
-            }
         }
     }
 }
@@ -232,7 +210,6 @@ function updateUI() {
     updateStats();
     updateRacketList();
     updateRecordList();
-    updateSyncStatus();
 }
 
 function updateStats() {
@@ -386,10 +363,6 @@ function updateRecordList() {
             </div>
         `;
     }
-}
-
-function updateSyncStatus() {
-    // 本地模式，无需显示同步状态
 }
 
 // ==================== 模态框 ====================
