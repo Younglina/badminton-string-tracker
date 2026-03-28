@@ -451,7 +451,6 @@ function importDataFromText() {
         const racketCount = importedData.rackets.length;
         if (confirm(`确定要导入数据吗？\n\n包含 ${racketCount} 个球拍记录\n当前数据将被替换。`)) {
             appData = importedData;
-            appData.lastSync = new Date().toISOString();
             saveData();
             updateUI();
             document.getElementById('importDataText').value = '';
@@ -480,7 +479,6 @@ function importDataFromFile(input) {
             const racketCount = importedData.rackets.length;
             if (confirm(`确定要导入文件吗？\n\n文件名：${file.name}\n包含 ${racketCount} 个球拍记录\n当前数据将被替换。`)) {
                 appData = importedData;
-                appData.lastSync = new Date().toISOString();
                 saveData();
                 updateUI();
                 closeModal('settingsModal');
