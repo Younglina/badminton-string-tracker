@@ -9,7 +9,7 @@ const SETTINGS_KEY = 'badmintonStringTracker_settings';
 
 let appData = {
     rackets: [],
-    lastSync: null
+    lastModified: null
 };
 
 let settings = {
@@ -56,6 +56,7 @@ function loadData() {
 }
 
 function saveData() {
+    appData.lastModified = new Date().toISOString();
     localStorage.setItem(STORAGE_KEY, JSON.stringify(appData));
     updateUI();
 }
@@ -499,7 +500,7 @@ function clearAllData() {
         if (confirm('再次确认：真的要删除所有数据吗？')) {
             appData = {
                 rackets: [],
-                lastSync: null
+                lastModified: null
             };
             currentRacketId = null;
             saveData();
