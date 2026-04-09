@@ -931,19 +931,22 @@
                     <div class="settings-title">☁️ 云端同步（Supabase）</div>
                     <div id="syncDisconnected">
                         <p style="font-size: 0.9rem; color: rgba(255,255,255,0.7); line-height: 1.6; margin-bottom: 1rem;">
-                            点击下方按钮连接 Supabase 云端数据库，启用跨设备同步。
+                            输入一个用户名或团队名来区分不同用户。相同名称的用户共享同一份数据。
                         </p>
+                        <div class="form-group">
+                            <label class="form-label">用户名 / 团队名</label>
+                            <input type="text" class="form-input" id="userNameInput"
+                                placeholder="例如：张三、球队A">
+                            <div class="form-hint">同一名称的用户共享数据</div>
+                        </div>
                         <div class="form-actions">
                             <button type="button" class="btn btn-sync btn-full" onclick="connectSupabase()">连接并同步</button>
                         </div>
-                        <p style="font-size: 0.8rem; color: rgba(255,255,255,0.4); margin-top: 1rem; text-align: center;">
-                            首次使用需在 Supabase 创建数据表（只需一次）
-                        </p>
                     </div>
                     <div id="syncConnected" style="display: none;">
                         <div class="sync-connected-info">
                             <span class="sync-connected-dot"></span>
-                            <span>已连接 · <code id="syncStatusText" style="font-size: 0.8rem; color: var(--electric-blue);">Supabase</code></span>
+                            <span>已连接 · <code id="syncStatusText" style="font-size: 0.8rem; color: var(--electric-blue);"></code></span>
                         </div>
                         <div class="form-actions">
                             <button type="button" class="btn btn-sync btn-full" id="syncBtn" onclick="syncWithSupabase()">🔄 同步数据</button>

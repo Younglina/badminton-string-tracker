@@ -15,7 +15,8 @@ let appData = {
 let settings = {
     supabaseUrl: 'https://ujakjpqqzjgcunfhecqv.supabase.co',
     supabaseKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVqYWtqcHFxempnY3VuZmhlY3F2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3MDcwNTUsImV4cCI6MjA5MTI4MzA1NX0.2UrUNA0MXGl6j5JLEqTD7sGmVtayg-IBbGWTKwPW_4A',
-    deviceId: 'shared-tracker-device'  // 所有设备用同一个ID，共享数据
+    deviceId: '',  // 用户自定义的设备ID
+    userName: ''  // 用户名/团队名
 };
 
 let currentRacketId = null;
@@ -89,6 +90,19 @@ function saveSettingsLocal() {
 
 // 连接 Supabase（使用预配置）
 async function connectSupabase() {
+    const userNameInput = document.getElementById('userNameInput');
+    const userName = userNameInput.value.trim();
+
+    if (!userName) {
+        showToast('请输入用户名或团队名', 'error');
+        return;
+    }
+
+    // 用用户名作为设备ID
+    settings.userName = userName;
+    settings.deviceId = 'user_' + userName;
+    saveSettingsLocal();
+
     try {
         const client = initSupabase();
 
@@ -121,7 +135,7 @@ async function createSupabaseTable(client) {
         console.log(`
 CREATE TABLE tracker_data (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-    device_id TEXT NOT NULL,
+    device_id TEXT NOT NULL UNIQUE,
     data JSONB NOT NULL,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
@@ -164,31 +178,16 @@ async function uploadToSupabase() {
 
     const now = new Date().toISOString();
 
-    // 先查询是否存在
-    const { data: existing } = await client
+    // 使用 upsert，device_id 是唯一的
+    await client
         .from('tracker_data')
-        .select('id')
-        .eq('device_id', settings.deviceId)
-        .single();
-
-    if (existing) {
-        // 更新
-        await client
-            .from('tracker_data')
-            .update({
-                data: appData,
-                updated_at: now
-            })
-            .eq('id', existing.id);
-    } else {
-        // 插入
-        await client
-            .from('tracker_data')
-            .insert({
-                device_id: settings.deviceId,
-                data: appData
-            });
-    }
+        .upsert({
+            device_id: settings.deviceId,
+            data: appData,
+            updated_at: now
+        }, {
+            onConflict: 'device_id'
+        });
 }
 
 // 同步（带冲突检测）
@@ -242,8 +241,8 @@ async function syncWithSupabase() {
 
 // 断开连接
 function disconnectSupabase() {
-    settings.supabaseUrl = '';
-    settings.supabaseKey = '';
+    settings.userName = '';
+    settings.deviceId = '';
     saveSettingsLocal();
     updateSyncUI();
     showToast('已断开云端连接', 'info');
@@ -267,14 +266,16 @@ function updateSyncUI() {
     const disconnected = document.getElementById('syncDisconnected');
     const connected = document.getElementById('syncConnected');
     const statusText = document.getElementById('syncStatusText');
+    const userNameInput = document.getElementById('userNameInput');
 
-    if (settings.supabaseUrl) {
+    if (settings.userName) {
         disconnected.style.display = 'none';
         connected.style.display = 'block';
-        statusText.textContent = 'Supabase';
+        statusText.textContent = settings.userName;
     } else {
         disconnected.style.display = 'block';
         connected.style.display = 'none';
+        if (userNameInput) userNameInput.value = '';
     }
 }
 
