@@ -14,7 +14,7 @@ let appData = {
 
 let settings = {
     supabaseUrl: 'https://ujakjpqqzjgcunfhecqv.supabase.co',
-    supabaseKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVqYWtqcHFxempnY3VuZmhlY3F2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3MDcwNTUsImV4cCI6MjA5MTI4MzA1NX0.2UrUNA0MEGl6j5JLEqTD7sGmVtayg-IBbGWTKwPW_4A',
+    supabaseKey: 'sb_publishable_Zp5ZTHghLV6QOrDmLXWrTw_DXoSqKiZ',
     deviceId: '',  // 用户自定义的设备ID
     userName: ''  // 用户名/团队名
 };
@@ -108,8 +108,14 @@ async function connectSupabase() {
         updateSyncUI();
         showToast('连接成功！', 'success');
 
-        // 下载远程数据
+        // 下载远程数据，如果远程没有则上传本地数据
         await syncFromSupabase();
+
+        // 如果远程没有数据，上传本地数据
+        if (!appData.rackets || appData.rackets.length === 0 || !appData.lastModified) {
+            await uploadToSupabase();
+            showToast('本地数据已上传到云端', 'success');
+        }
 
     } catch (error) {
         showToast(error.message || '连接失败', 'error');
@@ -118,34 +124,22 @@ async function connectSupabase() {
 
 // 创建 Supabase 表（如果不存在）
 async function createSupabaseTable(client) {
-    // 尝试查询，如果表不存在会报错
+    // 尝试查询
     const { error } = await client
         .from('tracker_data')
         .select('id')
         .limit(1);
 
     if (error && error.code === 'PGRST116') {
-        // 表不存在，提示用户创建
-        showToast('请在 Supabase SQL Editor 执行建表语句', 'error');
-        console.log('请执行以下 SQL 创建表：');
-        console.log(`
-CREATE TABLE tracker_data (
-    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-    device_id TEXT NOT NULL UNIQUE,
-    data JSONB NOT NULL,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-CREATE INDEX idx_tracker_device ON tracker_data(device_id);
-        `);
-        throw new Error('表不存在，请先创建表');
+        // 表不存在
+        throw new Error('请先在 Supabase SQL Editor 创建表');
     }
 }
 
 // 从 Supabase 同步数据
 async function syncFromSupabase() {
     const client = initSupabase();
-    if (!client) return;
+    if (!client) return null;
 
     const { data, error } = await client
         .from('tracker_data')
@@ -157,14 +151,16 @@ async function syncFromSupabase() {
 
     if (error && error.code !== 'PGRST116') {
         console.error('Sync error:', error);
-        return;
+        return null;
     }
 
     if (data && data.data) {
         appData = data.data;
         saveData();
         updateUI();
+        return data;
     }
+    return null;
 }
 
 // 上传到 Supabase
@@ -201,31 +197,28 @@ async function syncWithSupabase() {
 
     try {
         // 获取远程数据
-        const { data: remote, error } = await client
-            .from('tracker_data')
-            .select('data, updated_at')
-            .eq('device_id', settings.deviceId)
-            .order('updated_at', { ascending: false })
-            .limit(1)
-            .single();
+        const remote = await syncFromSupabase();
 
-        const localTime = appData.lastModified ? new Date(appData.lastModified).getTime() : 0;
-        const remoteTime = remote?.updated_at ? new Date(remote.updated_at).getTime() : 0;
-        const timeDiff = Math.abs(remoteTime - localTime);
-
-        if (!remote || timeDiff < 2000) {
-            // 无远程数据或时间差小于2秒，视为相同
-            showToast('数据已是最新', 'info');
-        } else if (localTime > remoteTime) {
-            // 本地较新，上传
+        if (!remote) {
+            // 远程没有数据，直接上传
             await uploadToSupabase();
             showToast('数据已上传到云端', 'success');
         } else {
-            // 远程较新，下载
-            appData = remote.data;
-            saveData();
-            updateUI();
-            showToast('已从云端同步最新数据', 'success');
+            const localTime = appData.lastModified ? new Date(appData.lastModified).getTime() : 0;
+            const remoteTime = remote?.updated_at ? new Date(remote.updated_at).getTime() : 0;
+            const timeDiff = Math.abs(remoteTime - localTime);
+
+            if (timeDiff < 2000) {
+                showToast('数据已是最新', 'info');
+            } else if (localTime > remoteTime) {
+                await uploadToSupabase();
+                showToast('数据已上传到云端', 'success');
+            } else {
+                appData = remote.data;
+                saveData();
+                updateUI();
+                showToast('已从云端同步最新数据', 'success');
+            }
         }
     } catch (error) {
         showToast(error.message || '同步失败', 'error');
