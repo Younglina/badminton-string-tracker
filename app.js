@@ -13,13 +13,23 @@ let appData = {
 };
 
 let settings = {
-    githubToken: '',
-    gistId: '',
-    cloudApiUrl: '',      // 云端 API URL
-    deviceId: ''          // 设备唯一ID
+    supabaseUrl: '',
+    supabaseKey: '',
+    deviceId: ''
 };
 
 let currentRacketId = null;
+
+// ==================== Supabase 客户端 ====================
+
+let supabase = null;
+
+function initSupabase() {
+    if (!settings.supabaseUrl || !settings.supabaseKey) {
+        return null;
+    }
+    return window.supabase.createClient(settings.supabaseUrl, settings.supabaseKey);
+}
 
 // ==================== 初始化 ====================
 
@@ -31,19 +41,16 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 function setupEventListeners() {
-    // 添加球拍表单
     document.getElementById('addRacketForm').addEventListener('submit', (e) => {
         e.preventDefault();
         addRacket();
     });
 
-    // 添加记录表单
     document.getElementById('addRecordForm').addEventListener('submit', (e) => {
         e.preventDefault();
         addRecord();
     });
 
-    // 设置默认日期为今天
     document.getElementById('startDate').valueAsDate = new Date();
     document.getElementById('recordDate').valueAsDate = new Date();
 }
@@ -68,83 +75,27 @@ function loadSettings() {
     if (saved) {
         settings = JSON.parse(saved);
     }
+    if (!settings.deviceId) {
+        settings.deviceId = 'device_' + Date.now() + '_' + Math.random().toString(36).substring(2, 15);
+        saveSettingsLocal();
+    }
 }
 
 function saveSettingsLocal() {
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
 }
 
-// ==================== Cloudflare Workers 同步 ====================
+// ==================== Supabase 同步 ====================
 
-const CF_API = {
-    // 获取数据
-    async getData() {
-        const response = await fetch(`${settings.cloudApiUrl}/data`, {
-            method: 'GET',
-            headers: {
-                'X-Device-ID': settings.deviceId,
-                'Content-Type': 'application/json'
-            }
-        });
-        if (!response.ok) {
-            throw new Error(`获取数据失败 (${response.status})`);
-        }
-        return response.json();
-    },
-
-    // 保存数据
-    async saveData(data) {
-        const response = await fetch(`${settings.cloudApiUrl}/data`, {
-            method: 'POST',
-            headers: {
-                'X-Device-ID': settings.deviceId,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ data })
-        });
-        if (!response.ok) {
-            throw new Error(`保存数据失败 (${response.status})`);
-        }
-        return response.json();
-    },
-
-    // 同步数据
-    async sync(data, lastModified) {
-        const response = await fetch(`${settings.cloudApiUrl}/sync`, {
-            method: 'POST',
-            headers: {
-                'X-Device-ID': settings.deviceId,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ data, lastModified })
-        });
-        if (!response.ok) {
-            throw new Error(`同步失败 (${response.status})`);
-        }
-        return response.json();
-    }
-};
-
-// 生成设备唯一ID
-function generateDeviceId() {
-    const stored = localStorage.getItem('badmintonStringTracker_deviceId');
-    if (stored) return stored;
-
-    const newId = 'device_' + Date.now() + '_' + Math.random().toString(36).substring(2, 15);
-    localStorage.setItem('badmintonStringTracker_deviceId', newId);
-    return newId;
-}
-
-// 初始化设备ID
-settings.deviceId = generateDeviceId();
-
-// 连接 Cloudflare Workers
-async function connectCFWorker() {
-    const urlInput = document.getElementById('cfWorkerUrlInput');
+// 连接 Supabase
+async function connectSupabase() {
+    const urlInput = document.getElementById('supabaseUrlInput');
+    const keyInput = document.getElementById('supabaseKeyInput');
     const url = urlInput.value.trim();
+    const key = keyInput.value.trim();
 
-    if (!url) {
-        showToast('请输入 Workers URL', 'error');
+    if (!url || !key) {
+        showToast('请输入 Project URL 和 anon key', 'error');
         return;
     }
 
@@ -155,229 +106,113 @@ async function connectCFWorker() {
     }
 
     try {
-        // 测试连接
-        const response = await fetch(`${url}/api/health`);
-        if (!response.ok) {
-            throw new Error('Workers 连接失败');
-        }
-
-        settings.cloudApiUrl = url;
+        settings.supabaseUrl = url;
+        settings.supabaseKey = key;
         saveSettingsLocal();
 
-        // 下载远程数据（如果存在）
-        try {
-            const remote = await CF_API.getData();
-            if (!remote.isEmpty && remote.data) {
-                appData = remote.data;
-                saveData();
-                showToast('连接成功！已从云端同步数据', 'success');
-            } else {
-                showToast('连接成功！', 'success');
-            }
-        } catch (e) {
-            showToast('连接成功！', 'success');
+        const client = initSupabase();
+        const { error } = await client.from('tracker_data').select('count');
+
+        if (error) {
+            // 表可能不存在，先尝试创建
+            await createSupabaseTable(client);
         }
 
         updateSyncUI();
+        showToast('连接成功！', 'success');
+
+        // 下载远程数据
+        await syncFromSupabase();
+
     } catch (error) {
-        showToast(error.message, 'error');
-    }
-}
-
-// 断开 Cloudflare 连接
-function disconnectCFWorker() {
-    settings.cloudApiUrl = '';
-    saveSettingsLocal();
-    updateSyncUI();
-    showToast('已断开云端连接', 'info');
-}
-
-// Cloudflare 同步
-async function syncWithCFWorker() {
-    if (!settings.cloudApiUrl) {
-        showToast('请先连接 Cloudflare Workers', 'error');
-        return;
-    }
-
-    const syncBtn = document.getElementById('syncBtn');
-    const originalText = syncBtn.textContent;
-    syncBtn.disabled = true;
-    syncBtn.textContent = '同步中...';
-
-    try {
-        const result = await CF_API.sync(appData, appData.lastModified);
-
-        if (result.action === 'already_synced') {
-            showToast('数据已是最新', 'info');
-        } else if (result.action === 'uploaded') {
-            showToast('数据已上传到云端', 'success');
-        } else if (result.action === 'downloaded') {
-            appData = result.data;
-            saveData();
-            showToast('已从云端同步最新数据', 'success');
-        }
-    } catch (error) {
-        if (error instanceof TypeError && error.message.includes('fetch')) {
-            showToast('网络连接失败，请检查网络', 'error');
-        } else {
-            showToast(error.message, 'error');
-        }
-    } finally {
-        syncBtn.disabled = false;
-        syncBtn.textContent = originalText;
-    }
-}
-
-// ==================== Gist 同步 ====================
-
-const GIST_API = 'https://api.github.com/gists';
-const GIST_FILENAME = 'badminton-string-tracker.json';
-const GIST_DESCRIPTION = 'Badminton String Tracker Data';
-
-async function gistApi(method, path, body = null) {
-    const options = {
-        method,
-        headers: {
-            'Authorization': `Bearer ${settings.githubToken}`,
-            'Content-Type': 'application/json'
-        }
-    };
-    if (body) {
-        options.body = JSON.stringify(body);
-    }
-    const response = await fetch(`${GIST_API}${path}`, options);
-    return response;
-}
-
-async function createGist() {
-    const response = await gistApi('POST', '', {
-        description: GIST_DESCRIPTION,
-        public: false,
-        files: {
-            [GIST_FILENAME]: {
-                content: JSON.stringify(appData, null, 2)
-            }
-        }
-    });
-
-    if (!response.ok) {
-        throw handleGistError(response.status);
-    }
-
-    const gist = await response.json();
-    settings.gistId = gist.id;
-    saveSettingsLocal();
-    return gist;
-}
-
-async function readGist() {
-    const response = await gistApi('GET', `/${settings.gistId}`);
-
-    if (!response.ok) {
-        throw handleGistError(response.status);
-    }
-
-    const gist = await response.json();
-    const file = gist.files[GIST_FILENAME];
-    if (!file) {
-        throw new Error('Gist 中未找到数据文件');
-    }
-
-    return {
-        data: JSON.parse(file.content),
-        updatedAt: gist.updated_at
-    };
-}
-
-async function updateGist() {
-    const response = await gistApi('PATCH', `/${settings.gistId}`, {
-        description: GIST_DESCRIPTION,
-        files: {
-            [GIST_FILENAME]: {
-                content: JSON.stringify(appData, null, 2)
-            }
-        }
-    });
-
-    if (!response.ok) {
-        throw handleGistError(response.status);
-    }
-}
-
-function handleGistError(status) {
-    switch (status) {
-        case 401:
-            return new Error('Token 无效或已过期，请重新配置');
-        case 403:
-            return new Error('请求过于频繁，请稍后再试');
-        case 404:
-            settings.gistId = '';
-            saveSettingsLocal();
-            return new Error('远程 Gist 不存在，请重新连接');
-        default:
-            return new Error(`同步失败 (HTTP ${status})`);
-    }
-}
-
-// 连接 Gist
-async function connectGist() {
-    const tokenInput = document.getElementById('gistTokenInput');
-    const gistIdInput = document.getElementById('gistIdInput');
-    const token = tokenInput.value.trim();
-    const existingGistId = gistIdInput.value.trim();
-
-    if (!token) {
-        showToast('请输入 GitHub Token', 'error');
-        return;
-    }
-
-    try {
-        settings.githubToken = token;
-
-        if (existingGistId) {
-            // 连接已有 Gist：先验证 Gist 存在，然后下载数据
-            settings.gistId = existingGistId;
-            const remote = await readGist();
-            // 远程数据覆盖本地（首次连接以云端为准）
-            appData = remote.data;
-            saveData();
-            saveSettingsLocal();
-            updateSyncUI();
-            showToast('连接成功！已从云端同步数据', 'success');
-        } else {
-            // 创建新 Gist
-            await createGist();
-            updateSyncUI();
-            showToast('连接成功！Gist 已创建并上传数据', 'success');
-        }
-    } catch (error) {
-        settings.githubToken = '';
-        settings.gistId = '';
+        settings.supabaseUrl = '';
+        settings.supabaseKey = '';
         saveSettingsLocal();
-        showToast(error.message, 'error');
+        showToast(error.message || '连接失败', 'error');
     }
 }
 
-// 断开连接
-function disconnectGist() {
-    settings.githubToken = '';
-    settings.gistId = '';
-    settings.cloudApiUrl = '';
-    saveSettingsLocal();
-    updateSyncUI();
-    showToast('已断开云端连接', 'info');
+// 创建 Supabase 表
+async function createSupabaseTable(client) {
+    // 使用 RPC 函数创建表（如果不行就让用户手动创建）
+    const { error } = await client.rpc('exec', {
+        sql: `CREATE TABLE IF NOT EXISTS tracker_data (
+            id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+            device_id TEXT NOT NULL,
+            data JSONB NOT NULL,
+            created_at TIMESTAMPTZ DEFAULT NOW(),
+            updated_at TIMESTAMPTZ DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_tracker_device ON tracker_data(device_id);`
+    }).catch(() => {
+        // RPC 可能不可用，静默忽略
+    });
 }
 
-// 手动同步
-async function syncWithGist() {
-    // Cloudflare Workers 优先
-    if (settings.cloudApiUrl) {
-        await syncWithCFWorker();
+// 从 Supabase 同步数据
+async function syncFromSupabase() {
+    const client = initSupabase();
+    if (!client) return;
+
+    const { data, error } = await client
+        .from('tracker_data')
+        .select('data, updated_at')
+        .eq('device_id', settings.deviceId)
+        .order('updated_at', { ascending: false })
+        .limit(1)
+        .single();
+
+    if (error && error.code !== 'PGRST116') {
+        console.error('Sync error:', error);
         return;
     }
 
-    if (!settings.githubToken || !settings.gistId) {
-        showToast('请先连接云端同步', 'error');
+    if (data && data.data) {
+        appData = data.data;
+        saveData();
+        updateUI();
+    }
+}
+
+// 上传到 Supabase
+async function uploadToSupabase() {
+    const client = initSupabase();
+    if (!client) return;
+
+    const now = new Date().toISOString();
+
+    // 先查询是否存在
+    const { data: existing } = await client
+        .from('tracker_data')
+        .select('id')
+        .eq('device_id', settings.deviceId)
+        .single();
+
+    if (existing) {
+        // 更新
+        await client
+            .from('tracker_data')
+            .update({
+                data: appData,
+                updated_at: now
+            })
+            .eq('id', existing.id);
+    } else {
+        // 插入
+        await client
+            .from('tracker_data')
+            .insert({
+                device_id: settings.deviceId,
+                data: appData
+            });
+    }
+}
+
+// 同步（带冲突检测）
+async function syncWithSupabase() {
+    const client = initSupabase();
+    if (!client) {
+        showToast('请先连接 Supabase', 'error');
         return;
     }
 
@@ -387,68 +222,54 @@ async function syncWithGist() {
     syncBtn.textContent = '同步中...';
 
     try {
-        const remote = await readGist();
-        const localTime = appData.lastModified ? new Date(appData.lastModified).getTime() : 0;
-        const remoteTime = new Date(remote.updatedAt).getTime();
-        const diff = Math.abs(localTime - remoteTime);
+        // 获取远程数据
+        const { data: remote, error } = await client
+            .from('tracker_data')
+            .select('data, updated_at')
+            .eq('device_id', settings.deviceId)
+            .order('updated_at', { ascending: false })
+            .limit(1)
+            .single();
 
-        if (diff < 2000) {
-            // 时间差 < 2秒，视为相同
+        const localTime = appData.lastModified ? new Date(appData.lastModified).getTime() : 0;
+        const remoteTime = remote?.updated_at ? new Date(remote.updated_at).getTime() : 0;
+        const timeDiff = Math.abs(remoteTime - localTime);
+
+        if (!remote || timeDiff < 2000) {
+            // 无远程数据或时间差小于2秒，视为相同
             showToast('数据已是最新', 'info');
         } else if (localTime > remoteTime) {
             // 本地较新，上传
-            await updateGist();
+            await uploadToSupabase();
             showToast('数据已上传到云端', 'success');
         } else {
             // 远程较新，下载
             appData = remote.data;
             saveData();
+            updateUI();
             showToast('已从云端同步最新数据', 'success');
         }
     } catch (error) {
-        if (error instanceof TypeError && error.message.includes('fetch')) {
-            showToast('网络连接失败，请检查网络', 'error');
-        } else {
-            showToast(error.message, 'error');
-        }
+        showToast(error.message || '同步失败', 'error');
     } finally {
         syncBtn.disabled = false;
         syncBtn.textContent = originalText;
     }
 }
 
-function updateSyncUI() {
-    const disconnected = document.getElementById('syncDisconnected');
-    const connected = document.getElementById('syncConnected');
-    const gistIdEl = document.getElementById('syncGistId');
-
-    // Cloudflare 连接优先
-    if (settings.cloudApiUrl) {
-        disconnected.style.display = 'none';
-        connected.style.display = 'block';
-        gistIdEl.textContent = 'Cloudflare D1';
-        gistIdEl.title = settings.cloudApiUrl;
-        gistIdEl.style.cursor = 'default';
-        gistIdEl.onclick = null;
-    } else if (settings.githubToken && settings.gistId) {
-        disconnected.style.display = 'none';
-        connected.style.display = 'block';
-        gistIdEl.textContent = settings.gistId;
-        gistIdEl.title = '点击复制';
-        gistIdEl.style.cursor = 'pointer';
-        gistIdEl.onclick = function() {
-            navigator.clipboard.writeText(settings.gistId).then(() => {
-                showToast('Gist ID 已复制', 'success');
-            });
-        };
-    } else {
-        disconnected.style.display = 'block';
-        connected.style.display = 'none';
-    }
+// 断开连接
+function disconnectSupabase() {
+    settings.supabaseUrl = '';
+    settings.supabaseKey = '';
+    saveSettingsLocal();
+    updateSyncUI();
+    showToast('已断开云端连接', 'info');
 }
 
-function toggleTokenVisibility() {
-    const input = document.getElementById('gistTokenInput');
+// ==================== UI 更新 ====================
+
+function toggleSupabaseKeyVisibility() {
+    const input = document.getElementById('supabaseKeyInput');
     const btn = input.parentElement.querySelector('.token-toggle');
     if (input.type === 'password') {
         input.type = 'text';
@@ -456,6 +277,21 @@ function toggleTokenVisibility() {
     } else {
         input.type = 'password';
         btn.textContent = '显示';
+    }
+}
+
+function updateSyncUI() {
+    const disconnected = document.getElementById('syncDisconnected');
+    const connected = document.getElementById('syncConnected');
+    const statusText = document.getElementById('syncStatusText');
+
+    if (settings.supabaseUrl) {
+        disconnected.style.display = 'none';
+        connected.style.display = 'block';
+        statusText.textContent = 'Supabase';
+    } else {
+        disconnected.style.display = 'block';
+        connected.style.display = 'none';
     }
 }
 
@@ -484,6 +320,11 @@ function addRacket() {
     closeModal('addRacketModal');
     document.getElementById('addRacketForm').reset();
     document.getElementById('startDate').valueAsDate = new Date();
+
+    // 自动同步到云端
+    if (settings.supabaseUrl) {
+        uploadToSupabase();
+    }
 }
 
 function deleteRacket(id, event) {
@@ -494,6 +335,9 @@ function deleteRacket(id, event) {
             currentRacketId = null;
         }
         saveData();
+        if (settings.supabaseUrl) {
+            uploadToSupabase();
+        }
     }
 }
 
@@ -504,12 +348,15 @@ function markAsBroken(id, event) {
 
     const totalSessions = calculateTotalSessions(racket);
     const note = prompt(`记录断线信息（可选）\n当前累计场次：${totalSessions}场`);
-    
+
     if (note !== null) {
         racket.isBroken = true;
         racket.breakDate = new Date().toISOString();
         racket.breakNote = note.trim();
         saveData();
+        if (settings.supabaseUrl) {
+            uploadToSupabase();
+        }
     }
 }
 
@@ -549,8 +396,13 @@ function addRecord() {
     racket.records.push(record);
     saveData();
     closeModal('addRecordModal');
-    document.getElementById('addRecordForm').reset();
+    document.getElementById('addRacketForm').reset();
     document.getElementById('recordDate').valueAsDate = new Date();
+
+    // 自动同步到云端
+    if (settings.supabaseUrl) {
+        uploadToSupabase();
+    }
 }
 
 function deleteRecord(racketId, recordId) {
@@ -559,6 +411,9 @@ function deleteRecord(racketId, recordId) {
         if (racket) {
             racket.records = racket.records.filter(r => r.id !== recordId);
             saveData();
+            if (settings.supabaseUrl) {
+                uploadToSupabase();
+            }
         }
     }
 }
@@ -579,7 +434,7 @@ function calculateStats() {
     appData.rackets.forEach(racket => {
         const sessions = calculateTotalSessions(racket);
         totalSessions += sessions;
-        
+
         if (racket.isBroken) {
             brokenCount++;
             totalLife += sessions;
@@ -610,7 +465,7 @@ function updateStats() {
 
 function updateRacketList() {
     const container = document.getElementById('racketList');
-    
+
     if (appData.rackets.length === 0) {
         container.innerHTML = `
             <div class="empty-state">
@@ -622,8 +477,7 @@ function updateRacketList() {
         return;
     }
 
-    // 按创建时间倒序
-    const sortedRackets = [...appData.rackets].sort((a, b) => 
+    const sortedRackets = [...appData.rackets].sort((a, b) =>
         new Date(b.createdAt) - new Date(a.createdAt)
     );
 
@@ -631,13 +485,12 @@ function updateRacketList() {
         const totalSessions = calculateTotalSessions(racket);
         const isActive = racket.id === currentRacketId;
         const isBroken = racket.isBroken;
-        
-        // 预估寿命进度（假设平均 30 场断线）
+
         const lifePercent = Math.min((totalSessions / 30) * 100, 100);
         const isWarning = lifePercent > 80 && !isBroken;
-        
+
         return `
-            <div class="racket-card ${isActive ? 'active' : ''} ${isBroken ? 'broken' : ''}" 
+            <div class="racket-card ${isActive ? 'active' : ''} ${isBroken ? 'broken' : ''}"
                  onclick="selectRacket('${racket.id}')">
                 <div class="racket-name">${escapeHtml(racket.model)}</div>
                 <div class="racket-string">${escapeHtml(racket.stringModel)}</div>
@@ -686,7 +539,7 @@ function updateRacketList() {
 function updateRecordList() {
     const container = document.getElementById('recordList');
     const titleEl = document.getElementById('selectedRacketName');
-    
+
     if (!currentRacketId) {
         titleEl.textContent = '';
         container.innerHTML = `
@@ -718,8 +571,7 @@ function updateRecordList() {
         return;
     }
 
-    // 按日期倒序
-    const sortedRecords = [...racket.records].sort((a, b) => 
+    const sortedRecords = [...racket.records].sort((a, b) =>
         new Date(b.date) - new Date(a.date)
     );
 
@@ -730,13 +582,12 @@ function updateRecordList() {
             </div>
             <div style="display: flex; align-items: center; gap: 0.75rem;">
                 <div class="record-count">+${record.count}场</div>
-                <button class="btn btn-danger btn-small" onclick="deleteRecord('${racket.id}', '${record.id}')" 
+                <button class="btn btn-danger btn-small" onclick="deleteRecord('${racket.id}', '${record.id}')"
                         style="padding: 0.3rem 0.5rem; font-size: 0.75rem;">删除</button>
             </div>
         </div>
     `).join('');
 
-    // 如果已断线，显示断线信息
     if (racket.isBroken) {
         const totalSessions = calculateTotalSessions(racket);
         container.innerHTML += `
@@ -773,7 +624,6 @@ function closeModal(modalId) {
     document.getElementById(modalId).classList.remove('active');
 }
 
-// 点击模态框背景关闭
 window.onclick = function(event) {
     if (event.target.classList.contains('modal')) {
         event.target.classList.remove('active');
@@ -782,16 +632,13 @@ window.onclick = function(event) {
 
 // ==================== 数据导入导出 ====================
 
-// 导出数据到剪贴板
 async function exportDataToClipboard() {
     const dataStr = JSON.stringify(appData, null, 2);
-    
+
     try {
         await navigator.clipboard.writeText(dataStr);
-        alert('数据已复制到剪贴板！\n\n你可以：\n1. 粘贴到微信/QQ 发送给自己\n2. 粘贴到备忘录保存\n3. 粘贴到其他设备导入');
+        alert('数据已复制到剪贴板！');
     } catch (err) {
-        console.error('复制失败:', err);
-        // 降级方案：显示文本框让用户手动复制
         const textArea = document.createElement('textarea');
         textArea.value = dataStr;
         textArea.style.position = 'fixed';
@@ -804,12 +651,11 @@ async function exportDataToClipboard() {
     }
 }
 
-// 导出数据到文件
 function exportDataToFile() {
     const dataStr = JSON.stringify(appData, null, 2);
     const blob = new Blob([dataStr], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
-    
+
     const a = document.createElement('a');
     a.href = url;
     a.download = `badminton-string-tracker-backup-${new Date().toISOString().split('T')[0]}.json`;
@@ -819,23 +665,21 @@ function exportDataToFile() {
     URL.revokeObjectURL(url);
 }
 
-// 从文本导入数据
 function importDataFromText() {
     const text = document.getElementById('importDataText').value.trim();
-    
+
     if (!text) {
         alert('请先粘贴 JSON 数据');
         return;
     }
-    
+
     try {
         const importedData = JSON.parse(text);
-        
+
         if (!importedData.rackets || !Array.isArray(importedData.rackets)) {
             throw new Error('数据格式不正确：缺少 rackets 数组');
         }
-        
-        // 确认导入
+
         const racketCount = importedData.rackets.length;
         if (confirm(`确定要导入数据吗？\n\n包含 ${racketCount} 个球拍记录\n当前数据将被替换。`)) {
             appData = importedData;
@@ -850,20 +694,19 @@ function importDataFromText() {
     }
 }
 
-// 从文件导入数据
 function importDataFromFile(input) {
     const file = input.files[0];
     if (!file) return;
-    
+
     const reader = new FileReader();
     reader.onload = function(e) {
         try {
             const importedData = JSON.parse(e.target.result);
-            
+
             if (!importedData.rackets || !Array.isArray(importedData.rackets)) {
                 throw new Error('数据格式不正确：缺少 rackets 数组');
             }
-            
+
             const racketCount = importedData.rackets.length;
             if (confirm(`确定要导入文件吗？\n\n文件名：${file.name}\n包含 ${racketCount} 个球拍记录\n当前数据将被替换。`)) {
                 appData = importedData;
@@ -875,12 +718,11 @@ function importDataFromFile(input) {
         } catch (error) {
             alert('导入失败：' + error.message);
         }
-        input.value = ''; // 重置 input
+        input.value = '';
     };
     reader.readAsText(file);
 }
 
-// 清空所有数据
 function clearAllData() {
     if (confirm('⚠️ 警告\n\n确定要清空所有数据吗？\n此操作不可恢复！\n\n建议先导出备份。')) {
         if (confirm('再次确认：真的要删除所有数据吗？')) {
