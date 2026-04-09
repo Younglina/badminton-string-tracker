@@ -15,7 +15,7 @@ let appData = {
 let settings = {
     githubToken: '',
     gistId: '',
-    cfWorkerUrl: '',      // Cloudflare Workers URL
+    cloudApiUrl: '',      // 云端 API URL
     deviceId: ''          // 设备唯一ID
 };
 
@@ -79,7 +79,7 @@ function saveSettingsLocal() {
 const CF_API = {
     // 获取数据
     async getData() {
-        const response = await fetch(`${settings.cfWorkerUrl}/api/data`, {
+        const response = await fetch(`${settings.cloudApiUrl}/data`, {
             method: 'GET',
             headers: {
                 'X-Device-ID': settings.deviceId,
@@ -94,7 +94,7 @@ const CF_API = {
 
     // 保存数据
     async saveData(data) {
-        const response = await fetch(`${settings.cfWorkerUrl}/api/data`, {
+        const response = await fetch(`${settings.cloudApiUrl}/data`, {
             method: 'POST',
             headers: {
                 'X-Device-ID': settings.deviceId,
@@ -110,7 +110,7 @@ const CF_API = {
 
     // 同步数据
     async sync(data, lastModified) {
-        const response = await fetch(`${settings.cfWorkerUrl}/api/sync`, {
+        const response = await fetch(`${settings.cloudApiUrl}/sync`, {
             method: 'POST',
             headers: {
                 'X-Device-ID': settings.deviceId,
@@ -161,7 +161,7 @@ async function connectCFWorker() {
             throw new Error('Workers 连接失败');
         }
 
-        settings.cfWorkerUrl = url;
+        settings.cloudApiUrl = url;
         saveSettingsLocal();
 
         // 下载远程数据（如果存在）
@@ -186,7 +186,7 @@ async function connectCFWorker() {
 
 // 断开 Cloudflare 连接
 function disconnectCFWorker() {
-    settings.cfWorkerUrl = '';
+    settings.cloudApiUrl = '';
     saveSettingsLocal();
     updateSyncUI();
     showToast('已断开云端连接', 'info');
@@ -194,7 +194,7 @@ function disconnectCFWorker() {
 
 // Cloudflare 同步
 async function syncWithCFWorker() {
-    if (!settings.cfWorkerUrl) {
+    if (!settings.cloudApiUrl) {
         showToast('请先连接 Cloudflare Workers', 'error');
         return;
     }
@@ -362,7 +362,7 @@ async function connectGist() {
 function disconnectGist() {
     settings.githubToken = '';
     settings.gistId = '';
-    settings.cfWorkerUrl = '';
+    settings.cloudApiUrl = '';
     saveSettingsLocal();
     updateSyncUI();
     showToast('已断开云端连接', 'info');
@@ -371,7 +371,7 @@ function disconnectGist() {
 // 手动同步
 async function syncWithGist() {
     // Cloudflare Workers 优先
-    if (settings.cfWorkerUrl) {
+    if (settings.cloudApiUrl) {
         await syncWithCFWorker();
         return;
     }
@@ -423,11 +423,11 @@ function updateSyncUI() {
     const gistIdEl = document.getElementById('syncGistId');
 
     // Cloudflare 连接优先
-    if (settings.cfWorkerUrl) {
+    if (settings.cloudApiUrl) {
         disconnected.style.display = 'none';
         connected.style.display = 'block';
         gistIdEl.textContent = 'Cloudflare D1';
-        gistIdEl.title = settings.cfWorkerUrl;
+        gistIdEl.title = settings.cloudApiUrl;
         gistIdEl.style.cursor = 'default';
         gistIdEl.onclick = null;
     } else if (settings.githubToken && settings.gistId) {
