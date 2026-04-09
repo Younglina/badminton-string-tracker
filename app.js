@@ -14,7 +14,7 @@ let appData = {
 
 let settings = {
     supabaseUrl: 'https://ujakjpqqzjgcunfhecqv.supabase.co',
-    supabaseKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVqYWtqcHFxempnY3VuZmhlY3F2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3MDcwNTUsImV4cCI6MjA5MTI4MzA1NX0.2UrUNA0MXGl6j5JLEqTD7sGmVtayg-IBbGWTKwPW_4A',
+    supabaseKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVqYWtqcHFxempnY3VuZmhlY3F2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3MDcwNTUsImV4cCI6MjA5MTI4MzA1NX0.2UrUNA0MEGl6j5JLEqTD7sGmVtayg-IBbGWTKwPW_4A',
     deviceId: '',  // 用户自定义的设备ID
     userName: ''  // 用户名/团队名
 };
@@ -22,8 +22,6 @@ let settings = {
 let currentRacketId = null;
 
 // ==================== Supabase 客户端 ====================
-
-let supabase = null;
 
 function initSupabase() {
     if (!settings.supabaseUrl || !settings.supabaseKey) {
@@ -104,10 +102,8 @@ async function connectSupabase() {
     saveSettingsLocal();
 
     try {
-        const client = initSupabase();
-
         // 创建表（如果不存在）
-        await createSupabaseTable(client);
+        await createSupabaseTable(initSupabase());
 
         updateSyncUI();
         showToast('连接成功！', 'success');
