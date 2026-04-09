@@ -931,25 +931,14 @@
                     <div class="settings-title">☁️ 云端同步（Supabase）</div>
                     <div id="syncDisconnected">
                         <p style="font-size: 0.9rem; color: rgba(255,255,255,0.7); line-height: 1.6; margin-bottom: 1rem;">
-                            使用 Supabase 免费数据库同步数据，支持多设备实时同步。
+                            点击下方按钮连接 Supabase 云端数据库，启用跨设备同步。
                         </p>
-                        <div class="form-group">
-                            <label class="form-label">Project URL</label>
-                            <input type="url" class="form-input" id="supabaseUrlInput"
-                                placeholder="https://xxxxx.supabase.co">
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">anon public key</label>
-                            <div class="token-input-wrapper">
-                                <input type="password" class="form-input token-input" id="supabaseKeyInput"
-                                    placeholder="eyJhbGciOiJIUzI1NiIs...">
-                                <button type="button" class="token-toggle" onclick="toggleSupabaseKeyVisibility()">显示</button>
-                            </div>
-                            <div class="form-hint"><a href="https://supabase.com/dashboard" target="_blank" style="color: var(--electric-blue);">点击获取 API Key</a></div>
-                        </div>
                         <div class="form-actions">
-                            <button type="button" class="btn btn-sync btn-full" onclick="connectSupabase()">连接 Supabase</button>
+                            <button type="button" class="btn btn-sync btn-full" onclick="connectSupabase()">连接并同步</button>
                         </div>
+                        <p style="font-size: 0.8rem; color: rgba(255,255,255,0.4); margin-top: 1rem; text-align: center;">
+                            首次使用需在 Supabase 创建数据表（只需一次）
+                        </p>
                     </div>
                     <div id="syncConnected" style="display: none;">
                         <div class="sync-connected-info">
@@ -958,9 +947,6 @@
                         </div>
                         <div class="form-actions">
                             <button type="button" class="btn btn-sync btn-full" id="syncBtn" onclick="syncWithSupabase()">🔄 同步数据</button>
-                        </div>
-                        <div style="margin-top: 0.75rem;">
-                            <button type="button" class="btn btn-danger btn-full" onclick="disconnectSupabase()" style="font-size: 0.8rem; padding: 0.5rem;">断开连接</button>
                         </div>
                     </div>
                 </div>

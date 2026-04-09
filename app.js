@@ -13,8 +13,8 @@ let appData = {
 };
 
 let settings = {
-    supabaseUrl: '',
-    supabaseKey: '',
+    supabaseUrl: 'https://ujakjpqqzjgcunfhecqv.supabase.co',
+    supabaseKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVqYWtqcHFxempnY3VuZmhlY3F2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3MDcwNTUsImV4cCI6MjA5MTI4MzA1NX0.2UrUNA0MXGl6j5JLEqTD7sGmVtayg-IBbGWTKwPW_4A',
     deviceId: ''
 };
 
@@ -87,36 +87,13 @@ function saveSettingsLocal() {
 
 // ==================== Supabase 同步 ====================
 
-// 连接 Supabase
+// 连接 Supabase（使用预配置）
 async function connectSupabase() {
-    const urlInput = document.getElementById('supabaseUrlInput');
-    const keyInput = document.getElementById('supabaseKeyInput');
-    const url = urlInput.value.trim();
-    const key = keyInput.value.trim();
-
-    if (!url || !key) {
-        showToast('请输入 Project URL 和 anon key', 'error');
-        return;
-    }
-
-    // 验证格式
-    if (!url.startsWith('https://')) {
-        showToast('URL 必须以 https:// 开头', 'error');
-        return;
-    }
-
     try {
-        settings.supabaseUrl = url;
-        settings.supabaseKey = key;
-        saveSettingsLocal();
-
         const client = initSupabase();
-        const { error } = await client.from('tracker_data').select('count');
 
-        if (error) {
-            // 表可能不存在，先尝试创建
-            await createSupabaseTable(client);
-        }
+        // 创建表（如果不存在）
+        await createSupabaseTable(client);
 
         updateSyncUI();
         showToast('连接成功！', 'success');
@@ -125,28 +102,34 @@ async function connectSupabase() {
         await syncFromSupabase();
 
     } catch (error) {
-        settings.supabaseUrl = '';
-        settings.supabaseKey = '';
-        saveSettingsLocal();
         showToast(error.message || '连接失败', 'error');
     }
 }
 
-// 创建 Supabase 表
+// 创建 Supabase 表（如果不存在）
 async function createSupabaseTable(client) {
-    // 使用 RPC 函数创建表（如果不行就让用户手动创建）
-    const { error } = await client.rpc('exec', {
-        sql: `CREATE TABLE IF NOT EXISTS tracker_data (
-            id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-            device_id TEXT NOT NULL,
-            data JSONB NOT NULL,
-            created_at TIMESTAMPTZ DEFAULT NOW(),
-            updated_at TIMESTAMPTZ DEFAULT NOW()
-        );
-        CREATE INDEX IF NOT EXISTS idx_tracker_device ON tracker_data(device_id);`
-    }).catch(() => {
-        // RPC 可能不可用，静默忽略
-    });
+    // 尝试查询，如果表不存在会报错
+    const { error } = await client
+        .from('tracker_data')
+        .select('id')
+        .limit(1);
+
+    if (error && error.code === 'PGRST116') {
+        // 表不存在，提示用户创建
+        showToast('请在 Supabase SQL Editor 执行建表语句', 'error');
+        console.log('请执行以下 SQL 创建表：');
+        console.log(`
+CREATE TABLE tracker_data (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    device_id TEXT NOT NULL,
+    data JSONB NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX idx_tracker_device ON tracker_data(device_id);
+        `);
+        throw new Error('表不存在，请先创建表');
+    }
 }
 
 // 从 Supabase 同步数据
