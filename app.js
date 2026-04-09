@@ -15,7 +15,7 @@ let appData = {
 let settings = {
     supabaseUrl: 'https://ujakjpqqzjgcunfhecqv.supabase.co',
     supabaseKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVqYWtqcHFxempnY3VuZmhlY3F2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3MDcwNTUsImV4cCI6MjA5MTI4MzA1NX0.2UrUNA0MXGl6j5JLEqTD7sGmVtayg-IBbGWTKwPW_4A',
-    deviceId: ''
+    deviceId: 'shared-tracker-device'  // 所有设备用同一个ID，共享数据
 };
 
 let currentRacketId = null;
