@@ -931,31 +931,58 @@
                     <div class="settings-title">☁️ 云端同步</div>
                     <div id="syncDisconnected">
                         <p style="font-size: 0.9rem; color: rgba(255,255,255,0.7); line-height: 1.6; margin-bottom: 1rem;">
-                            使用 GitHub Gist 免费同步数据到云端，支持多设备间同步。
+                            选择同步方式：Cloudflare（推荐）或 GitHub Gist。
                         </p>
-                        <div class="form-group">
-                            <label class="form-label">GitHub Personal Access Token</label>
-                            <div class="token-input-wrapper">
-                                <input type="password" class="form-input token-input" id="gistTokenInput"
-                                    placeholder="ghp_xxxxxxxxxxxx">
-                                <button type="button" class="token-toggle" onclick="toggleTokenVisibility()">显示</button>
+
+                        <!-- Cloudflare Workers -->
+                        <div style="margin-bottom: 1.5rem; padding: 1rem; background: rgba(255,107,53,0.1); border: 1px solid rgba(255,107,53,0.3); border-radius: 12px;">
+                            <div style="font-weight: 700; margin-bottom: 0.5rem; color: var(--accent-orange);">⚡ Cloudflare Workers + D1（推荐）</div>
+                            <p style="font-size: 0.85rem; color: rgba(255,255,255,0.6); margin-bottom: 1rem;">
+                                部署在你的 Cloudflare 账号，无需服务器，免费额度够个人使用。
+                            </p>
+                            <div class="form-group">
+                                <label class="form-label">Workers URL</label>
+                                <input type="url" class="form-input" id="cfWorkerUrlInput"
+                                    placeholder="https://your-worker.your-name.workers.dev">
+                                <div class="form-hint">部署 Workers 后填入地址</div>
                             </div>
-                            <div class="form-hint">只需 gist 权限。<a href="https://github.com/settings/tokens/new?scopes=gist" target="_blank" style="color: var(--electric-blue);">点击创建 Token</a></div>
+                            <button type="button" class="btn btn-sync btn-full" onclick="connectCFWorker()" style="background: linear-gradient(135deg, #ff6b35, #ff8c5a);">
+                                连接 Cloudflare
+                            </button>
                         </div>
-                        <div class="form-group">
-                            <label class="form-label">Gist ID（可选）</label>
-                            <input type="text" class="form-input" id="gistIdInput"
-                                placeholder="留空自动创建新 Gist，已有则填入 Gist ID">
-                            <div class="form-hint">多设备同步时，在其他设备填入相同的 Gist ID</div>
-                        </div>
-                        <div class="form-actions">
-                            <button type="button" class="btn btn-sync btn-full" onclick="connectGist()">连接</button>
+
+                        <div style="text-align: center; margin: 1rem 0; color: rgba(255,255,255,0.3);">— 或 —</div>
+
+                        <!-- GitHub Gist -->
+                        <div style="padding: 1rem; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px;">
+                            <div style="font-weight: 700; margin-bottom: 0.5rem;">GitHub Gist</div>
+                            <p style="font-size: 0.85rem; color: rgba(255,255,255,0.6); margin-bottom: 1rem;">
+                                使用 GitHub 存储同步数据。
+                            </p>
+                            <div class="form-group">
+                                <label class="form-label">GitHub Personal Access Token</label>
+                                <div class="token-input-wrapper">
+                                    <input type="password" class="form-input token-input" id="gistTokenInput"
+                                        placeholder="ghp_xxxxxxxxxxxx">
+                                    <button type="button" class="token-toggle" onclick="toggleTokenVisibility()">显示</button>
+                                </div>
+                                <div class="form-hint">只需 gist 权限。<a href="https://github.com/settings/tokens/new?scopes=gist" target="_blank" style="color: var(--electric-blue);">点击创建 Token</a></div>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Gist ID（可选）</label>
+                                <input type="text" class="form-input" id="gistIdInput"
+                                    placeholder="留空自动创建新 Gist，已有则填入 Gist ID">
+                                <div class="form-hint">多设备同步时，在其他设备填入相同的 Gist ID</div>
+                            </div>
+                            <div class="form-actions">
+                                <button type="button" class="btn btn-sync btn-full" onclick="connectGist()">连接 Gist</button>
+                            </div>
                         </div>
                     </div>
                     <div id="syncConnected" style="display: none;">
                         <div class="sync-connected-info">
                             <span class="sync-connected-dot"></span>
-                            <span>已连接 · Gist ID: <code id="syncGistId" style="font-size: 0.8rem; color: var(--electric-blue);"></code></span>
+                            <span>已连接 · <code id="syncGistId" style="font-size: 0.8rem; color: var(--electric-blue);"></code></span>
                         </div>
                         <div class="form-actions">
                             <button type="button" class="btn btn-sync btn-full" id="syncBtn" onclick="syncWithGist()">🔄 同步数据</button>

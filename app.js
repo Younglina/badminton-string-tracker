@@ -14,7 +14,9 @@ let appData = {
 
 let settings = {
     githubToken: '',
-    gistId: ''
+    gistId: '',
+    cfWorkerUrl: '',      // Cloudflare Workers URL
+    deviceId: ''          // 设备唯一ID
 };
 
 let currentRacketId = null;
@@ -70,6 +72,160 @@ function loadSettings() {
 
 function saveSettingsLocal() {
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+}
+
+// ==================== Cloudflare Workers 同步 ====================
+
+const CF_API = {
+    // 获取数据
+    async getData() {
+        const response = await fetch(`${settings.cfWorkerUrl}/api/data`, {
+            method: 'GET',
+            headers: {
+                'X-Device-ID': settings.deviceId,
+                'Content-Type': 'application/json'
+            }
+        });
+        if (!response.ok) {
+            throw new Error(`获取数据失败 (${response.status})`);
+        }
+        return response.json();
+    },
+
+    // 保存数据
+    async saveData(data) {
+        const response = await fetch(`${settings.cfWorkerUrl}/api/data`, {
+            method: 'POST',
+            headers: {
+                'X-Device-ID': settings.deviceId,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ data })
+        });
+        if (!response.ok) {
+            throw new Error(`保存数据失败 (${response.status})`);
+        }
+        return response.json();
+    },
+
+    // 同步数据
+    async sync(data, lastModified) {
+        const response = await fetch(`${settings.cfWorkerUrl}/api/sync`, {
+            method: 'POST',
+            headers: {
+                'X-Device-ID': settings.deviceId,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ data, lastModified })
+        });
+        if (!response.ok) {
+            throw new Error(`同步失败 (${response.status})`);
+        }
+        return response.json();
+    }
+};
+
+// 生成设备唯一ID
+function generateDeviceId() {
+    const stored = localStorage.getItem('badmintonStringTracker_deviceId');
+    if (stored) return stored;
+
+    const newId = 'device_' + Date.now() + '_' + Math.random().toString(36).substring(2, 15);
+    localStorage.setItem('badmintonStringTracker_deviceId', newId);
+    return newId;
+}
+
+// 初始化设备ID
+settings.deviceId = generateDeviceId();
+
+// 连接 Cloudflare Workers
+async function connectCFWorker() {
+    const urlInput = document.getElementById('cfWorkerUrlInput');
+    const url = urlInput.value.trim();
+
+    if (!url) {
+        showToast('请输入 Workers URL', 'error');
+        return;
+    }
+
+    // 验证格式
+    if (!url.startsWith('https://')) {
+        showToast('URL 必须以 https:// 开头', 'error');
+        return;
+    }
+
+    try {
+        // 测试连接
+        const response = await fetch(`${url}/api/health`);
+        if (!response.ok) {
+            throw new Error('Workers 连接失败');
+        }
+
+        settings.cfWorkerUrl = url;
+        saveSettingsLocal();
+
+        // 下载远程数据（如果存在）
+        try {
+            const remote = await CF_API.getData();
+            if (!remote.isEmpty && remote.data) {
+                appData = remote.data;
+                saveData();
+                showToast('连接成功！已从云端同步数据', 'success');
+            } else {
+                showToast('连接成功！', 'success');
+            }
+        } catch (e) {
+            showToast('连接成功！', 'success');
+        }
+
+        updateSyncUI();
+    } catch (error) {
+        showToast(error.message, 'error');
+    }
+}
+
+// 断开 Cloudflare 连接
+function disconnectCFWorker() {
+    settings.cfWorkerUrl = '';
+    saveSettingsLocal();
+    updateSyncUI();
+    showToast('已断开云端连接', 'info');
+}
+
+// Cloudflare 同步
+async function syncWithCFWorker() {
+    if (!settings.cfWorkerUrl) {
+        showToast('请先连接 Cloudflare Workers', 'error');
+        return;
+    }
+
+    const syncBtn = document.getElementById('syncBtn');
+    const originalText = syncBtn.textContent;
+    syncBtn.disabled = true;
+    syncBtn.textContent = '同步中...';
+
+    try {
+        const result = await CF_API.sync(appData, appData.lastModified);
+
+        if (result.action === 'already_synced') {
+            showToast('数据已是最新', 'info');
+        } else if (result.action === 'uploaded') {
+            showToast('数据已上传到云端', 'success');
+        } else if (result.action === 'downloaded') {
+            appData = result.data;
+            saveData();
+            showToast('已从云端同步最新数据', 'success');
+        }
+    } catch (error) {
+        if (error instanceof TypeError && error.message.includes('fetch')) {
+            showToast('网络连接失败，请检查网络', 'error');
+        } else {
+            showToast(error.message, 'error');
+        }
+    } finally {
+        syncBtn.disabled = false;
+        syncBtn.textContent = originalText;
+    }
 }
 
 // ==================== Gist 同步 ====================
@@ -206,6 +362,7 @@ async function connectGist() {
 function disconnectGist() {
     settings.githubToken = '';
     settings.gistId = '';
+    settings.cfWorkerUrl = '';
     saveSettingsLocal();
     updateSyncUI();
     showToast('已断开云端连接', 'info');
@@ -213,8 +370,14 @@ function disconnectGist() {
 
 // 手动同步
 async function syncWithGist() {
+    // Cloudflare Workers 优先
+    if (settings.cfWorkerUrl) {
+        await syncWithCFWorker();
+        return;
+    }
+
     if (!settings.githubToken || !settings.gistId) {
-        showToast('请先连接 GitHub Gist', 'error');
+        showToast('请先连接云端同步', 'error');
         return;
     }
 
@@ -259,7 +422,15 @@ function updateSyncUI() {
     const connected = document.getElementById('syncConnected');
     const gistIdEl = document.getElementById('syncGistId');
 
-    if (settings.githubToken && settings.gistId) {
+    // Cloudflare 连接优先
+    if (settings.cfWorkerUrl) {
+        disconnected.style.display = 'none';
+        connected.style.display = 'block';
+        gistIdEl.textContent = 'Cloudflare D1';
+        gistIdEl.title = settings.cfWorkerUrl;
+        gistIdEl.style.cursor = 'default';
+        gistIdEl.onclick = null;
+    } else if (settings.githubToken && settings.gistId) {
         disconnected.style.display = 'none';
         connected.style.display = 'block';
         gistIdEl.textContent = settings.gistId;

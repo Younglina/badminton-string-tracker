@@ -1,0 +1,8 @@
+name = "badminton-string-tracker-api"
+main = "src/index.js"
+compatibility_date = "2024-01-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "badminton-string-tracker"
+database_id = "9af00eff-14e6-4f74-8deb-2fd7a767782d"
